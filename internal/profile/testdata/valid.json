@@ -7,7 +7,7 @@
   "realm": "",
   "username": "jane.doe",
   "trusted_cert": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  "mfa": { "mode": "push" },
+  "mfa": { "mode": "none" },
   "routes": { "mode": "custom", "include": ["10.20.0.0/16"], "preserve_lan": true },
   "dns": { "mode": "split", "domains": ["corp.example.com"] }
 }

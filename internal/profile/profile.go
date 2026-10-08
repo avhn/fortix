@@ -87,7 +87,7 @@ func (p *Profile) ApplyDefaults() {
 		p.Gateway.Port = 443
 	}
 	if p.MFA.Mode == "" {
-		p.MFA.Mode = "push"
+		p.MFA.Mode = "none"
 	}
 	if p.MFA.Mode == "totp" {
 		if p.MFA.Digits == nil {
@@ -177,9 +177,9 @@ func (p *Profile) validateMFA(add func(string, string)) {
 		if p.MFA.Algorithm == nil || (*p.MFA.Algorithm != "SHA1" && *p.MFA.Algorithm != "SHA256" && *p.MFA.Algorithm != "SHA512") {
 			add("mfa.algorithm", "must be SHA1, SHA256, or SHA512")
 		}
-	case "push", "prompt", "static":
+	case "none", "push", "prompt", "static":
 	default:
-		add("mfa.mode", "must be push, prompt, totp, or static")
+		add("mfa.mode", "must be none, push, prompt, totp, or static")
 	}
 	if p.MFA.Mode != "totp" {
 		if p.MFA.Digits != nil {

@@ -109,6 +109,7 @@ func TestValidate(t *testing.T) {
 		{"cert colon separated", func(p *Profile) { p.TrustedCert = strings.Repeat("AB:", 31) + "AB" }, ""},
 		{"cert only separators", func(p *Profile) { p.TrustedCert = ":::" }, "trusted_cert"},
 		{"mfa push", func(p *Profile) { p.MFA.Mode = "push" }, ""},
+		{"mfa none", func(p *Profile) { p.MFA.Mode = "none" }, ""},
 		{"mfa prompt", func(p *Profile) { p.MFA.Mode = "prompt" }, ""},
 		{"mfa static", func(p *Profile) { p.MFA.Mode = "static" }, ""},
 		{"mfa unknown", func(p *Profile) { p.MFA.Mode = "other" }, "mfa.mode"},
@@ -241,7 +242,7 @@ func TestJoinedErrors(t *testing.T) {
 func TestApplyDefaults(t *testing.T) {
 	p := &Profile{}
 	p.ApplyDefaults()
-	if p.Gateway.Port != 443 || p.MFA.Mode != "push" || p.Routes.Mode != "gateway" ||
+	if p.Gateway.Port != 443 || p.MFA.Mode != "none" || p.Routes.Mode != "gateway" ||
 		p.Routes.PreserveLAN == nil || !*p.Routes.PreserveLAN || p.DNS.Mode != "none" {
 		t.Fatalf("incorrect defaults: %+v", p)
 	}
@@ -275,8 +276,8 @@ func TestDecode(t *testing.T) {
 		{"normalized cert", strings.Replace(data, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", strings.Repeat("AB:", 31)+"AB", 1), ""},
 		{"separator-only cert", strings.Replace(data, "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", ":::", 1), "trusted_cert"},
 		{"password unknown", strings.Replace(data, "{", `{"password":"x",`, 1), "unknown field"},
-		{"seed unknown", strings.Replace(data, `"mode": "push"`, `"mode":"push","seed":"x"`, 1), "unknown field"},
-		{"otp unknown", strings.Replace(data, `"mode": "push"`, `"mode":"push","otp":"x"`, 1), "unknown field"},
+		{"seed unknown", strings.Replace(data, `"mode": "none"`, `"mode":"none","seed":"x"`, 1), "unknown field"},
+		{"otp unknown", strings.Replace(data, `"mode": "none"`, `"mode":"none","otp":"x"`, 1), "unknown field"},
 		{"option unknown", strings.Replace(data, "{", `{"options":"x",`, 1), "unknown field"},
 		{"nested unknown", strings.Replace(data, `"host":`, `"extra":true,"host":`, 1), "unknown field"},
 		{"case alias", strings.Replace(data, `"id":`, `"ID":`, 1), "unknown field"},
@@ -300,8 +301,8 @@ func TestDecode(t *testing.T) {
 		{"unclosed object", `{"gateway":{"host":"vpn.example.com"`, "EOF"},
 		{"wrong type", strings.Replace(data, `"port": 10443`, `"port":"10443"`, 1), "cannot unmarshal"},
 		{"null bool", strings.Replace(data, `"preserve_lan": true`, `"preserve_lan":null`, 1), "null is not allowed"},
-		{"null MFA parameter", strings.Replace(data, `"mode": "push"`, `"mode":"push","digits":null`, 1), "null is not allowed"},
-		{"forbidden zero digits", strings.Replace(data, `"mode": "push"`, `"mode":"push","digits":0`, 1), "mfa.digits"},
+		{"null MFA parameter", strings.Replace(data, `"mode": "none"`, `"mode":"none","digits":null`, 1), "null is not allowed"},
+		{"forbidden zero digits", strings.Replace(data, `"mode": "none"`, `"mode":"none","digits":0`, 1), "mfa.digits"},
 		{"invalid fields", `{}`, "schema_version"},
 		{"oversized", data + strings.Repeat(" ", maxProfileBytes), "64 KiB"},
 		{"exact size", data + strings.Repeat(" ", maxProfileBytes-len(data)), ""},
@@ -323,7 +324,7 @@ func TestDecode(t *testing.T) {
 		})
 	}
 	p, err := Decode(strings.NewReader(minimal))
-	if err != nil || p.Gateway.Port != 443 || p.MFA.Mode != "push" || !*p.Routes.PreserveLAN {
+	if err != nil || p.Gateway.Port != 443 || p.MFA.Mode != "none" || !*p.Routes.PreserveLAN {
 		t.Fatalf("defaults not applied: %v, %v", p, err)
 	}
 	if p, err := Decode(nil); p != nil || err == nil {
