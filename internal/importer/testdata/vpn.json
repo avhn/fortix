@@ -1,0 +1,15 @@
+{
+  "FortiClient": {
+    "VPN": {
+      "SSL": [
+        {"Name":"Work VPN", "Server":"vpn.example.com", "User":"jane.doe", "VpnType":0, "Password":"ignored-test-value", "Secret":{"VpnType":0,"Name":"Must not import"}},
+        {"Name":"Work VPN", "Server":"vpn.example.com", "ServerPort":"10443", "User":"jane.doe", "VpnType":"0", "SavePassword":true},
+        {"Name":"Embedded port", "Server":"vpn.example.com:10443", "User":"jane.doe", "VpnType":0},
+        {"Name":"IPsec", "Server":"vpn.example.com", "User":"jane.doe", "VpnType":1, "Password":"ignored-test-value"}
+      ],
+      "SavedPassword": {"Name":"Must not import", "Server":"vpn.example.com", "User":"jane.doe", "VpnType":0},
+      "SavedSecret": {"Name":"Must not import", "Server":"vpn.example.com", "User":"jane.doe", "VpnType":0},
+      "SavedToken": {"Name":"Must not import", "Server":"vpn.example.com", "User":"jane.doe", "VpnType":0}
+    }
+  }
+}
