@@ -33,7 +33,7 @@ func Next(s State, e Event) (State, []Effect) {
 		}
 	case UpRefused:
 		if s.Phase == Disconnected || s.Phase == Backoff || (s.Phase == Failed && s.Exited && s.Cleaned) {
-			s.Failure, s.Wanted = e.Failure, false
+			s.Failure, s.Wanted = e.Failure, true
 			s.Exited, s.Cleaned = true, true
 			return transition(s, Failed, e.Detail, 0)
 		}
@@ -95,7 +95,7 @@ func Next(s State, e Event) (State, []Effect) {
 			if reason == "" {
 				reason = ProcessFailure
 			}
-			if e.Detail != "" && (reason == ConflictFailure || reason == NetworkFailure) {
+			if e.Detail != "" && (reason == ConflictFailure || reason == NetworkFailure || reason == ProcessFailure || reason == InterfaceFailure) {
 				s.Failure = reason
 				return beginStop(s, Failed, e.Detail)
 			}
@@ -272,7 +272,7 @@ func output(s State, e Event) (State, []Effect) {
 			s.LocalIP, s.DNS, s.Suffix = observed.LocalIP, append([]netip.Addr(nil), observed.DNS...), observed.Suffix
 		}
 	case openfortivpn.InterfaceUp:
-		if s.Phase == Negotiating {
+		if s.Phase == Negotiating && s.Interface == "" {
 			s.Interface = observed.Name
 		}
 	case openfortivpn.TunnelUp:

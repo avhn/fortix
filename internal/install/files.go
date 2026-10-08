@@ -415,3 +415,28 @@ func isNotEmpty(err error) bool {
 func cleanPath(path string) bool {
 	return filepath.IsAbs(path) && filepath.Clean(path) == path && !strings.ContainsFunc(path, unicode.IsControl)
 }
+
+// profileModes restricts existing regular profile files during installation upgrades.
+// Trusted parents and non-writable root-owned files are required before changing modes.
+func (i *installer) profileModes() error {
+	entries, err := os.ReadDir(i.paths.Profiles)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		path := filepath.Join(i.paths.Profiles, entry.Name())
+		if err := i.checkFile(path); err != nil {
+			return err
+		}
+		if err := i.options.Chown(path, 0, i.gid); err != nil {
+			return err
+		}
+		if err := os.Chmod(path, 0640); err != nil {
+			return err
+		}
+	}
+	return nil
+}

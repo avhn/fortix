@@ -16,13 +16,16 @@ import (
 // Status is a non-secret snapshot for one stored profile, including idle profiles.
 // Since is the UTC time of the most recent state transition, or zero before startup.
 type Status struct {
-	Profile   string        `json:"profile"`
-	State     session.Phase `json:"state"`
-	Detail    string        `json:"detail"`
-	Attempt   uint64        `json:"attempt"`
-	Interface string        `json:"interface"`
-	LocalIP   string        `json:"local_ip"`
-	Since     time.Time     `json:"since"`
+	Wanted         bool          `json:"wanted"`
+	Initiated      bool          `json:"initiated"`
+	CleanupPending bool          `json:"cleanup_pending"`
+	Profile        string        `json:"profile"`
+	State          session.Phase `json:"state"`
+	Detail         string        `json:"detail"`
+	Attempt        uint64        `json:"attempt"`
+	Interface      string        `json:"interface"`
+	LocalIP        string        `json:"local_ip"`
+	Since          time.Time     `json:"since"`
 }
 
 // profileState pairs a profile identifier with its current public phase.
@@ -48,6 +51,7 @@ func (s *Server) dispatch(c *connection, r protocol.Request) protocol.Result {
 	case "subscribe":
 		s.mu.Lock()
 		c.subscribed = true
+		c.logs = r.Logs
 		s.mu.Unlock()
 	case "profile.list", "status":
 		ids, err := s.profileIDs()
@@ -61,14 +65,14 @@ func (s *Server) dispatch(c *connection, r protocol.Request) protocol.Result {
 			if err != nil {
 				s.opts.Logger.Warn("skipping unreadable profile", "profile", id, "error", err)
 				if a := s.actor(id); a != nil {
-					statuses = append(statuses, a.snapshot())
+					statuses = append(statuses, a.snapshotFor(c))
 					profiles = append(profiles, profileState{id, a.snapshot().State})
 				}
 				continue
 			}
 			status := Status{Profile: id, State: session.Disconnected}
 			if a := s.actor(id); a != nil {
-				status = a.snapshot()
+				status = a.snapshotFor(c)
 			}
 			statuses = append(statuses, status)
 			profiles = append(profiles, profileState{p.ID, status.State})
@@ -98,7 +102,7 @@ func (s *Server) dispatch(c *connection, r protocol.Request) protocol.Result {
 			return storedFailure(r.ID, err)
 		}
 		p.TrustedCert = ""
-		if stored != nil {
+		if stored != nil && stored.Gateway == p.Gateway {
 			p.TrustedCert = stored.TrustedCert
 		}
 		data, err := json.Marshal(p)
@@ -143,7 +147,7 @@ func (s *Server) dispatch(c *connection, r protocol.Request) protocol.Result {
 		if reply.code != "" {
 			detail := reply.detail
 			if detail == "" {
-				detail = "profile cannot start"
+				detail = "profile cannot start; use fortix down " + r.Profile + " to retry cleanup"
 			}
 			return failure(r.ID, reply.code, detail)
 		}
@@ -175,7 +179,7 @@ func (s *Server) dispatch(c *connection, r protocol.Request) protocol.Result {
 		if route == nil {
 			return failure(r.ID, protocol.NotFound, "challenge is no longer pending")
 		}
-		reply := route.actor.call(controlInput{op: r.Op, challengeID: r.ChallengeID, secret: []byte(r.Secret)})
+		reply := route.actor.call(controlInput{op: r.Op, origin: c, challengeID: r.ChallengeID, secret: []byte(r.Secret)})
 		if reply.code != "" {
 			return failure(r.ID, reply.code, "challenge is no longer pending")
 		}
@@ -184,7 +188,7 @@ func (s *Server) dispatch(c *connection, r protocol.Request) protocol.Result {
 		if a == nil {
 			return failure(r.ID, protocol.Conflict, "no rejected certificate to trust")
 		}
-		reply := a.call(controlInput{op: "trust", digest: r.Digest})
+		reply := a.call(controlInput{op: "trust", origin: c, digest: r.Digest})
 		if reply.code != "" {
 			return failure(r.ID, reply.code, "certificate cannot be trusted")
 		}

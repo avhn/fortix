@@ -12,7 +12,7 @@ func TestNetworkRefusal(t *testing.T) {
 			s.Attempt, s.Wanted = 3, true
 			e := Event{Profile: "work", Attempt: 3, Kind: UpRefused, Failure: ConflictFailure, Detail: "another full tunnel is active"}
 			next, effects := Next(s, e)
-			if next.Phase != Failed || next.Failure != ConflictFailure || next.Detail != e.Detail || next.Wanted || !next.Cleaned || !next.Exited {
+			if next.Phase != Failed || next.Failure != ConflictFailure || next.Detail != e.Detail || !next.Wanted || !next.Cleaned || !next.Exited {
 				t.Fatalf("refusal state: %+v", next)
 			}
 			for _, effect := range effects {

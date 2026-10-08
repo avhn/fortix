@@ -23,10 +23,31 @@ const certificate = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789a
 // on invalid invocation or pinentry failure. It never opens a network connection.
 func main() {
 	realm, pin, trust := "", "", ""
-	for _, arg := range os.Args[1:] {
-		if v, ok := strings.CutPrefix(arg, "--realm="); ok {
-			realm = v
+	config := os.NewFile(3, "account-config")
+	if config == nil {
+		os.Exit(90)
+	}
+	scanner := bufio.NewScanner(config)
+	username := ""
+	for scanner.Scan() {
+		key, value, ok := strings.Cut(scanner.Text(), "=")
+		if !ok {
+			os.Exit(90)
 		}
+		switch strings.TrimSpace(key) {
+		case "realm":
+			realm = strings.TrimSpace(value)
+		case "username":
+			username = strings.TrimSpace(value)
+		default:
+			os.Exit(90)
+		}
+	}
+	if scanner.Err() != nil || username == "" {
+		os.Exit(90)
+	}
+	_ = config.Close()
+	for _, arg := range os.Args[1:] {
 		if v, ok := strings.CutPrefix(arg, "--pinentry="); ok {
 			pin = v
 		}

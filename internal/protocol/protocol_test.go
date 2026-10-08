@@ -161,7 +161,7 @@ func TestEventShapes(t *testing.T) {
 		kind string
 		keys []string
 	}{
-		{"state", []string{"type", "profile", "attempt", "state", "detail"}},
+		{"state", []string{"type", "profile", "attempt", "state", "detail", "wanted", "cleanup_pending", "initiated"}},
 		{"challenge", []string{"type", "profile", "attempt", "challenge_id", "kind", "prompt"}},
 		{"cert", []string{"type", "profile", "attempt", "digest", "subject", "issuer"}},
 		{"log", []string{"type", "profile", "attempt", "line"}},

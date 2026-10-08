@@ -101,7 +101,7 @@ func TestObservationMatrix(t *testing.T) {
 							t.Fatal("address metadata not stored exactly")
 						}
 					case openfortivpn.InterfaceUp:
-						if next.Interface != "ppp1" || effects != nil {
+						if next.Interface != s.Interface || effects != nil {
 							t.Fatal("interface metadata not stored")
 						}
 					case openfortivpn.TunnelUp:

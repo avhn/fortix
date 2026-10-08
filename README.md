@@ -130,7 +130,7 @@ See [profiles](docs/profiles.md) for the complete schema.
 | `fortix profile list` | List stored profile IDs and states |
 | `fortix profile show <id>` | Show stored JSON |
 | `fortix profile add <file>` | Validate and store through the helper |
-| `fortix profile rm <id>` | Remove an inactive profile |
+| `fortix profile rm <id>` or `fortix profile remove <id>` | Remove an inactive profile |
 | `fortix import forticlient [--plist path] [--apply]` | Preview non-secret drafts; optionally store them |
 | `fortix password set\|clear <id>` | Store a hidden password in, or remove it from, the keyring |
 | `fortix up <id>...\|--all [--save]` | Wait for connection outcomes and answer challenges |
@@ -166,11 +166,18 @@ status through glyph shape, not grey, amber, or green:
 
 | Status | Meaning |
 | --- | --- |
-| NotConnected | No verified connected profiles, grey on Linux |
-| Connecting | A profile is starting, authenticating, configuring, stopping, or backing off |
-| Connected | All wanted profiles are connected, green on Linux |
-| Partial | Some profiles are connected, others are not |
-| Attention | A failed profile, password prompt, or certificate needs attention |
+| NotConnected | No wanted connection, progress, or attention, grey on Linux |
+| Connecting | No wanted profile is connected; a profile is progressing without needing human attention |
+| Connected | At least one profile is wanted and all wanted profiles are connected, green on Linux |
+| Partial | At least one wanted profile is connected and at least one wanted profile is not connected |
+| Attention | No wanted profile is connected and a failed profile, password prompt, or certificate needs attention |
+
+A profile is wanted after a tray or CLI start until explicitly stopped, including
+failed attempts. Refresh takes this intent from current helper state. Partial
+takes precedence over connecting and attention when wanted connectivity is mixed;
+Connected means every wanted profile is connected. Unwanted idle profiles do not
+make a connected set partial. Plain `fortix status` includes failure details.
+The tray offers **Forget saved password** for each profile.
 
 Linux progress and attention states use amber; partial connectivity uses a
 green partial ring. The tooltip lists

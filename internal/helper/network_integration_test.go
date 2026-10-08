@@ -61,7 +61,7 @@ func (r *integrationRunner) Run(ctx context.Context, _ []string, args ...string)
 func adapterOptions(t *testing.T, runner *integrationRunner) func(*Options) {
 	t.Helper()
 	return func(o *Options) {
-		adapter, err := network.New(network.Options{Paths: o.Paths, OS: "linux", Runner: runner, Subnets: func() ([]network.InterfaceSubnet, error) { return nil, nil }})
+		adapter, err := network.New(network.Options{Paths: o.Paths, OS: "linux", Runner: runner, VerifyInterface: func(string, netip.Addr) error { return nil }, Subnets: func() ([]network.InterfaceSubnet, error) { return nil, nil }})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,7 +158,7 @@ func TestOwnedNetworkStartupRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := &integrationRunner{routes: slices.Clone(j.Routes)}
-	adapter, err := network.New(network.Options{OS: "linux", Runner: runner, Subnets: func() ([]network.InterfaceSubnet, error) { return nil, nil }})
+	adapter, err := network.New(network.Options{OS: "linux", Runner: runner, VerifyInterface: func(string, netip.Addr) error { return nil }, Subnets: func() ([]network.InterfaceSubnet, error) { return nil, nil }})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +181,7 @@ func TestUnusedNetworkReservations(t *testing.T) {
 	for _, operation := range []string{"up", "replace", "retire"} {
 		t.Run(operation, func(t *testing.T) {
 			runner := &integrationRunner{}
-			adapter, err := network.New(network.Options{OS: "linux", Runner: runner, Subnets: func() ([]network.InterfaceSubnet, error) { return nil, nil }})
+			adapter, err := network.New(network.Options{OS: "linux", Runner: runner, VerifyInterface: func(string, netip.Addr) error { return nil }, Subnets: func() ([]network.InterfaceSubnet, error) { return nil, nil }})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -199,7 +199,7 @@ func TestUnusedNetworkReservations(t *testing.T) {
 				a.state.Attempt = ^uint64(0)
 			}
 			reply := make(chan controlReply, 1)
-			a.control(controlInput{op: operation, profile: p, reply: reply})
+			a.control(controlInput{op: operation, origin: &connection{uid: 501}, profile: p, reply: reply})
 			<-reply
 			if operation == "up" && (a.state.Phase != session.Failed || a.state.Detail != "attempt generation exhausted") {
 				t.Fatalf("unexpected no-start outcome: %+v", a.state)

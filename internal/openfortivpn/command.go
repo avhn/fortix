@@ -50,10 +50,7 @@ func BuildCommand(p *profile.Profile, opts Options) (argv, env []string, err err
 	if _, err := hex.DecodeString(opts.AttemptToken); err != nil {
 		return nil, nil, errors.New("openfortivpn: attempt token must be 64 lowercase hex characters")
 	}
-	argv = []string{opts.Executable, net.JoinHostPort(validated.Gateway.Host, strconv.Itoa(validated.Gateway.Port)), "-u", validated.Username}
-	if validated.Realm != "" {
-		argv = append(argv, "--realm="+validated.Realm)
-	}
+	argv = []string{opts.Executable, net.JoinHostPort(validated.Gateway.Host, strconv.Itoa(validated.Gateway.Port))}
 	if validated.TrustedCert != "" {
 		argv = append(argv, "--trusted-cert="+validated.TrustedCert)
 	}
@@ -62,10 +59,28 @@ func BuildCommand(p *profile.Profile, opts Options) (argv, env []string, err err
 		routes = "0"
 	}
 	// Disable both DNS writers so the helper remains the single DNS owner.
-	argv = append(argv, "--pinentry="+opts.Pinentry, "-c", "/dev/null", "--set-dns=0", "--pppd-use-peerdns=0", "--set-routes="+routes)
+	argv = append(argv, "--pinentry="+opts.Pinentry, "-c", "/dev/fd/3", "--set-dns=0", "--pppd-use-peerdns=0", "--set-routes="+routes)
 	if validated.MFA.Mode != "push" {
 		argv = append(argv, "--no-ftm-push")
 	}
 	env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "FORTIX_PINENTRY_SOCKET=" + opts.PinentrySocket, "FORTIX_ATTEMPT_TOKEN=" + opts.AttemptToken}
 	return argv, env, nil
+}
+
+// Config encodes validated account fields for an inherited anonymous pipe at fd 3.
+// Control characters are refused by profile validation, so values cannot add keys.
+// The caller closes the pipe after spawn and never writes these bytes to disk.
+func Config(p *profile.Profile) ([]byte, error) {
+	if p == nil {
+		return nil, errors.New("openfortivpn: profile must not be nil")
+	}
+	validated := *p
+	if err := validated.Validate(); err != nil {
+		return nil, err
+	}
+	config := "username = " + validated.Username + "\n"
+	if validated.Realm != "" {
+		config += "realm = " + validated.Realm + "\n"
+	}
+	return []byte(config), nil
 }

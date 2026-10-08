@@ -25,9 +25,9 @@ func TestBuild(t *testing.T) {
 		{"connected", []Profile{up}, true, Connected, "Work"},
 		{"unwanted idle", []Profile{up, {ID: "unused", State: session.Disconnected}}, true, Connected, "Work"},
 		{"partial", []Profile{up, idle}, true, Partial, "Work"},
-		{"externally connected", []Profile{{ID: "work", State: session.Connected}}, true, Connected, "work"},
-		{"external up with wanted down", []Profile{{ID: "work", State: session.Connected}, idle}, true, Partial, "work"},
-		{"failed", []Profile{up, {State: session.Failed}}, true, Attention, "Work"},
+		{"externally connected", []Profile{{ID: "work", State: session.Connected, Wanted: true}}, true, Connected, "work"},
+		{"external up with wanted down", []Profile{{ID: "work", State: session.Connected, Wanted: true}, idle}, true, Partial, "work"},
+		{"failed", []Profile{up, {State: session.Failed, Wanted: true}}, true, Partial, "Work"},
 		{"trust", []Profile{{State: session.WaitingTrust}}, true, Attention, "none"},
 		{"password", []Profile{{State: session.WaitingPassword, PendingPassword: true}}, true, Attention, "none"},
 		{"attention beats progress", []Profile{{State: session.Starting}, {State: session.Failed}}, true, Attention, "none"},
@@ -75,12 +75,12 @@ func TestProgressPhases(t *testing.T) {
 		if menu.Status != Connecting || !strings.Contains(menu.Items[0].Title, phaseTitle(phase)) {
 			t.Fatal(menu)
 		}
-		if menu.Items[1].Enabled || !menu.Items[2].Enabled {
+		if menu.Items[len(menu.Items)-5].Enabled || !menu.Items[len(menu.Items)-4].Enabled {
 			t.Fatal("incorrect progress actions", menu.Items)
 		}
 	}
 	menu := Build([]Profile{{ID: "work", State: session.Disconnected}}, true, Preferences{})
-	if !menu.Items[1].Enabled || menu.Items[2].Enabled || menu.Items[4].Checked {
+	if !menu.Items[len(menu.Items)-5].Enabled || menu.Items[len(menu.Items)-4].Enabled || menu.Items[len(menu.Items)-2].Checked {
 		t.Fatal(menu.Items)
 	}
 	menu = Build([]Profile{{ID: "work", State: session.Connected, Wanted: true}, {ID: "other", State: session.Connected, Wanted: true}}, true, Preferences{})

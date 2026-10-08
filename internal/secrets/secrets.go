@@ -3,9 +3,15 @@
 package secrets
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
+
 	"regexp"
 	"sync"
+
+	"github.com/avhn/fortix/internal/profile"
 
 	"github.com/zalando/go-keyring"
 )
@@ -18,7 +24,7 @@ var (
 	ErrUnavailable = errors.New("secure keyring unavailable")
 	ErrInvalidID   = errors.New("invalid profile id")
 	ErrTooLong     = errors.New("password exceeds secure storage size limit")
-	idPattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}$`)
+	idPattern      = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,62}(:[a-f0-9]{64})?$`)
 )
 
 // maxPasswordBytes keeps the encoded macOS security input below its 4096-byte command limit.
@@ -42,7 +48,7 @@ type provider struct {
 	delete func(string, string) error
 }
 
-// Keyring uses service fortix and account <id>:password in the system keyring.
+// Keyring uses service fortix and account <bound-profile-key>:password in the system keyring.
 // Its zero value is usable and never substitutes an insecure storage backend.
 type Keyring struct{ backend *provider }
 
@@ -147,4 +153,12 @@ func (m *Memory) Delete(id string) error {
 	}
 	delete(m.passwords, id)
 	return nil
+}
+
+// Key binds a password to its profile ID, gateway host/port, and username.
+// Encoding a tuple before hashing prevents ambiguous concatenation. Legacy ID-only
+// accounts are deliberately not queried, so gateway changes require fresh input.
+func Key(p *profile.Profile) string {
+	data, _ := json.Marshal([]any{p.Gateway.Host, p.Gateway.Port, p.Username})
+	return fmt.Sprintf("%s:%x", p.ID, sha256.Sum256(data))
 }

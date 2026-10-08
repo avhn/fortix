@@ -103,6 +103,7 @@ const (
 	CertFailure      Failure = "certificate"
 	ConflictFailure  Failure = "conflict"
 	NetworkFailure   Failure = "network"
+	InterfaceFailure Failure = "interface"
 	TimeoutFailure   Failure = "timeout"
 	ProcessFailure   Failure = "process"
 	CancelledFailure Failure = "cancelled"

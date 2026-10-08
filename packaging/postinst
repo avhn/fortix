@@ -7,9 +7,11 @@ case "${1:-}" in
     if ! getent group fortix >/dev/null; then
       groupadd --system fortix
     fi
-    install -d -o root -g root -m 0755 /etc/fortix /etc/fortix/profiles
+    install -d -o root -g root -m 0755 /etc/fortix
+    install -d -o root -g fortix -m 0750 /etc/fortix/profiles
+    find /etc/fortix/profiles -maxdepth 1 -type f -name '*.json' -exec chown root:fortix {} + -exec chmod 0640 {} +
     install -d -o root -g root -m 0700 /var/lib/fortix /var/lib/fortix/state
-    install -d -o root -g fortix -m 0750 /var/log/fortix
+    install -d -o root -g root -m 0700 /var/log/fortix
     # Pinentry must be the same trusted executable, not a user-selected program.
     ln -f /usr/libexec/fortix/fortix-helper /usr/libexec/fortix/fortix-pinentry
     if [ -d /run/systemd/system ]; then

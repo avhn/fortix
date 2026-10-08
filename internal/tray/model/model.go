@@ -27,6 +27,7 @@ type Profile struct {
 	State           session.Phase
 	Wanted          bool
 	PendingPassword bool
+	CleanupPending  bool
 }
 
 // Preferences contains user-controlled presentation settings; false disables motion.
@@ -48,13 +49,14 @@ type Menu struct {
 }
 
 // Build returns a fresh menu for profiles, helper reachability, and preferences.
-// It preserves input order, performs no I/O, and cannot fail. Attention outranks
-// progress; progress outranks connected counts. Unreachable snapshots are stale,
+// It preserves input order, performs no I/O, and cannot fail. Mixed wanted connectivity
+// is Partial; all wanted connected is Connected. Otherwise attention outranks progress.
+// Unreachable snapshots are stale,
 // so profiles are unchecked and the tooltip reports no verified connections.
 func Build(profiles []Profile, reachable bool, preferences Preferences) Menu {
 	menu := Menu{Status: NotConnected, Items: make([]Item, 0, len(profiles)+7)}
 	names := make([]string, 0, len(profiles))
-	wanted, wantedUp, up := 0, 0, 0
+	wanted, wantedUp := 0, 0
 	attention, progress, connectable, stoppable := false, false, false, false
 	if !reachable {
 		menu.Items = append(menu.Items, Item{ID: "helper", Title: "Helper not running"})
@@ -69,7 +71,8 @@ func Build(profiles []Profile, reachable bool, preferences Preferences) Menu {
 		if !reachable {
 			text = "Helper unavailable"
 		}
-		menu.Items = append(menu.Items, Item{ID: "profile:" + p.ID, Title: name + " (" + text + ")", Enabled: reachable, Checked: connected})
+		menu.Items = append(menu.Items, Item{ID: "profile:" + p.ID, Title: name + " (" + text + ")", Enabled: reachable, Checked: connected},
+			Item{ID: "forget:" + p.ID, Title: "Forget saved password: " + name, Enabled: reachable})
 		if !reachable {
 			continue
 		}
@@ -80,23 +83,22 @@ func Build(profiles []Profile, reachable bool, preferences Preferences) Menu {
 			}
 		}
 		if connected {
-			up++
 			names = append(names, name)
 		}
 		attention = attention || p.PendingPassword || p.State == session.Failed || p.State == session.WaitingTrust
 		progress = progress || inProgress(p.State)
 		connectable = connectable || p.State == session.Disconnected || p.State == session.Failed
-		stoppable = stoppable || (p.State != session.Disconnected && p.State != session.Failed)
+		stoppable = stoppable || p.State != session.Disconnected
 	}
 	switch {
+	case wantedUp > 0 && wantedUp < wanted:
+		menu.Status = Partial
+	case wanted > 0 && wantedUp == wanted:
+		menu.Status = Connected
 	case attention:
 		menu.Status = Attention
 	case progress:
 		menu.Status = Connecting
-	case (wanted > 0 && wantedUp == wanted) || (wanted == 0 && up > 0):
-		menu.Status = Connected
-	case up > 0:
-		menu.Status = Partial
 	}
 	menu.Items = append(menu.Items,
 		Item{ID: "connect_all", Title: "Connect all", Enabled: reachable && connectable},

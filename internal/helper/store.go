@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -28,6 +30,7 @@ type Store struct {
 	mu    sync.Mutex
 	dir   *os.File
 	owner uint32
+	group uint32
 }
 
 // OpenStore opens a non-symlink directory with no untrusted writers, owned by the
@@ -39,11 +42,23 @@ func OpenStore(path string) (*Store, error) {
 	}
 	f := os.NewFile(uintptr(fd), path)
 	stat := unix.Stat_t{}
-	if err := unix.Fstat(fd, &stat); err != nil || stat.Uid != uint32(os.Geteuid()) || stat.Mode&0022 != 0 {
+	if err := unix.Fstat(fd, &stat); err != nil || stat.Uid != uint32(os.Geteuid()) || stat.Mode&0027 != 0 {
 		_ = f.Close()
 		return nil, errors.New("unsafe profile directory")
 	}
-	return &Store{dir: f, owner: stat.Uid}, nil
+	if os.Geteuid() == 0 {
+		group, err := user.LookupGroup("fortix")
+		if err != nil {
+			_ = f.Close()
+			return nil, err
+		}
+		gid, err := strconv.ParseUint(group.Gid, 10, 32)
+		if err != nil || stat.Gid != uint32(gid) {
+			_ = f.Close()
+			return nil, errors.New("unsafe profile directory group")
+		}
+	}
+	return &Store{dir: f, owner: stat.Uid, group: stat.Gid}, nil
 }
 
 // Close releases the directory descriptor after all operations have completed.
@@ -82,7 +97,7 @@ func (s *Store) Get(id string) (*profile.Profile, error) {
 	if err := unix.Fstat(fd, &stat); err != nil {
 		return nil, err
 	}
-	if stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Uid != s.owner || stat.Mode&07777 != 0644 {
+	if stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Uid != s.owner || stat.Gid != s.group || stat.Mode&07777 != 0640 {
 		return nil, errors.New("unsafe profile file")
 	}
 	p, err := profile.Decode(f)
@@ -95,7 +110,7 @@ func (s *Store) Get(id string) (*profile.Profile, error) {
 	return p, nil
 }
 
-// Put strictly decodes raw JSON and atomically installs a root-owned 0644 copy.
+// Put strictly decodes raw JSON and atomically installs a root:fortix 0640 copy.
 // Temporary data is written in the same directory, synced, renamed, and the directory
 // is synced. Existing symlinks or special files are rejected rather than replaced.
 func (s *Store) Put(raw []byte) (*profile.Profile, error) {
@@ -115,7 +130,7 @@ func (s *Store) Put(raw []byte) (*profile.Profile, error) {
 	if err != nil && !errors.Is(err, unix.ENOENT) {
 		return nil, err
 	}
-	if err == nil && (stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Uid != s.owner || stat.Mode&07777 != 0644) {
+	if err == nil && (stat.Mode&unix.S_IFMT != unix.S_IFREG || stat.Uid != s.owner || stat.Gid != s.group || stat.Mode&07777 != 0640) {
 		return nil, errors.New("unsafe existing profile")
 	}
 	if errors.Is(err, unix.ENOENT) {
@@ -127,7 +142,7 @@ func (s *Store) Put(raw []byte) (*profile.Profile, error) {
 			return nil, errors.New("profile limit reached")
 		}
 	}
-	if err := atomicAt(s.dir, name, data, 0644); err != nil {
+	if err := atomicAt(s.dir, name, data, 0640); err != nil {
 		return nil, err
 	}
 	return p, nil
@@ -145,7 +160,7 @@ func (s *Store) Delete(id string) error {
 	if err := unix.Fstatat(int(s.dir.Fd()), id+".json", &st, unix.AT_SYMLINK_NOFOLLOW); err != nil {
 		return err
 	}
-	if st.Mode&unix.S_IFMT != unix.S_IFREG || st.Uid != s.owner || st.Mode&07777 != 0644 {
+	if st.Mode&unix.S_IFMT != unix.S_IFREG || st.Uid != s.owner || st.Gid != s.group || st.Mode&07777 != 0640 {
 		return errors.New("unsafe profile file")
 	}
 	if err := unix.Unlinkat(int(s.dir.Fd()), id+".json", 0); err != nil {
@@ -209,6 +224,15 @@ func atomicAt(dir *os.File, name string, data []byte, mode uint32) error {
 	defer func() { _ = f.Close(); _ = unix.Unlinkat(int(dir.Fd()), temp, 0) }()
 	if _, err := f.Write(data); err != nil {
 		return err
+	}
+	if mode == 0640 {
+		var stat unix.Stat_t
+		if err := unix.Fstat(int(dir.Fd()), &stat); err != nil {
+			return err
+		}
+		if err := f.Chown(-1, int(stat.Gid)); err != nil {
+			return err
+		}
 	}
 	if err := f.Chmod(os.FileMode(mode)); err != nil {
 		return err

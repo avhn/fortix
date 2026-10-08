@@ -21,8 +21,9 @@ of the `fortix` group are authorized; others are refused. Membership grants
 machine-wide management of every profile and tunnel. It is not restricted to
 profiles created by that user. Authorized members can change a profile's
 username, gateway, routing, and DNS domains, and confirm helper-captured
-certificate pins; grant membership
-only to users trusted to manage this network access.
+certificate pins for their own attempts. Membership is a trusted role: it permits
+changing system routing and split DNS for the whole machine, affecting every user.
+Grant it only to users trusted to manage machine-wide network access.
 
 ## What the helper accepts
 
@@ -36,11 +37,13 @@ client validation is not an authorization boundary.
 Profiles cannot express raw openfortivpn flags, arbitrary configuration paths,
 executables, PPP plugins, shell commands, passwords, or MFA seeds. Unknown
 fields, duplicate keys, null values, malformed hostnames/domains/CIDRs, and
-unsafe profile IDs fail validation. Stored files are root-owned and accessed
+unsafe profile IDs fail validation. Stored profiles are `root:fortix 0640` in a `root:fortix 0750` directory, not
+readable by non-members. Files are accessed
 through trusted directories with symlink, ownership, mode, and file-type checks.
 
 The helper constructs the openfortivpn argument list itself and executes it
-without a shell. It uses `/dev/null` instead of a user-supplied configuration,
+without a shell. Username and realm are supplied through an inherited anonymous
+pipe (`-c /dev/fd/3`), never argv or a disk configuration. It uses
 a fixed working directory and environment, disabled openfortivpn/PPP DNS
 writers, and its own trusted pinentry executable. Password and OTP command-line
 flags and code-loading PPP options are never supplied by clients.
@@ -58,23 +61,30 @@ remain responsible for its provenance and checksum verification.
 
 1. A user requests `up` for a stored profile.
 2. The helper starts an attempt with a random token and a trusted pinentry
-   responder. The private relay directory is `0700`.
+   responder. The attempt records the initiating kernel peer UID, retained across
+   automatic retries. The private relay directory is `0700`.
 3. A password/code request is bound to that attempt and routed to the initiating
-   client if it is still present, otherwise to subscribers. The first accepted
-   answer wins and expired/obsolete answers are refused.
+   client if it is still present, otherwise only to subscribers with the same UID
+   or root. Certificate events follow the same rule. Only that UID or root may
+   answer, cancel, or trust. Trays ignore prompts for attempts they did not start.
+   The first accepted answer wins and expired/obsolete answers are refused.
 4. The client reads the OS keyring for passwords, otherwise asks for hidden
    input. Codes use hidden input and are not saved.
 5. The secret crosses the local control socket and the attempt-bound relay,
    reaching openfortivpn through its Assuan pinentry exchange.
 
 Secrets are not placed in files, argv, child environment variables, or log
-messages. The keyring service is `fortix`, account `<profile-id>:password`.
+messages. The keyring service is `fortix`; accounts bind the profile ID to a SHA-256 hash
+of the gateway host, port, and username. Legacy ID-only entries are not read:
+users re-enter and save the password after upgrading. A changed endpoint or
+username cannot reuse a previous saved password.
 Unavailable or locked keyrings cause a prompt, never plaintext storage.
 `remember_passwords` defaults to true; users can disable it in their private
 preferences. CLI `--save` explicitly enables saving. Prompted passwords are
 saved only when the matching attempt connects successfully. A stored password
 can still be used when remembering newly prompted passwords is disabled;
-remove it with `fortix password clear <id>` if that is not desired.
+remove it with `fortix password clear <id>` or the tray profile's **Forget saved
+password** entry if that is not desired.
 
 Secrets necessarily exist in client, helper, pinentry, and openfortivpn memory,
 and traverse local sockets in plaintext protected by OS access controls.
@@ -89,7 +99,8 @@ captured by the helper for that profile. Verify it independently before
 confirmation. Displaying an identity does not authenticate it. CLI `--yes`
 skips the human dialog, not the digest binding. Pins are helper-owned and set
 only through `trust` with the captured digest. `profile add` preserves an
-existing pin and ignores the submitted `trusted_cert`. Removing a profile and
+existing pin only when the gateway host and port are unchanged, and ignores the
+submitted `trusted_cert`. Changing either gateway field clears the stored pin. Removing a profile and
 adding it again clears its pin; group members can perform that reset.
 
 ## Network ownership and recovery
@@ -97,8 +108,12 @@ adding it again clears its pin; group members can perform that reset.
 Custom routes are checked for overlapping active/configured routes, existing
 routes, and connected interface subnets. Duplicate negotiated local IPv4
 addresses and conflicting full-tunnel defaults are rejected. Gateway-pushed
-routes are observed after authentication; openfortivpn can install them before
-fortix detects a conflict, so transient network changes remain possible.
+routes are observed after authentication; gateway mode rejects default and
+split-default routes on its own link, while full mode permits them. The kernel
+must confirm that the reported tunnel interface carries the negotiated local IP
+before the helper applies routes or split DNS. Otherwise it reports
+`INTERFACE_MISMATCH`. Openfortivpn can install gateway routes before fortix
+detects a conflict, so transient network changes remain possible.
 
 Each attempt journals process identity and owned routes/DNS, not secrets.
 Recovery compares process start identity before acting on recorded PIDs and
@@ -129,7 +144,9 @@ gateway-admin misconfiguration, and remote traffic confidentiality beyond the
 VPN protocol and gateway configuration. Group-wide profile control is an
 explicit trust decision, not tenant isolation.
 
-Root log files remain private `0600` files. The tray requests at most 500
+Root log files remain private `0600` files in a `root:root 0700` directory.
+Live log events are sent only to clients that explicitly subscribe to logs,
+not to ordinary state subscribers. The tray requests at most 500
 redacted lines through the helper and opens a `0600` copy in a private user
 temporary directory. These snapshots remain until the tray exits normally;
 an abrupt termination may leave copies, so treat them as sensitive diagnostics.

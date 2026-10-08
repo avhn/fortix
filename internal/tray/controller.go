@@ -56,6 +56,8 @@ type controller struct {
 	options       Options
 	profiles      []model.Profile
 	attempts      map[string]uint64
+	started       map[string]uint64
+	keys          map[string]string
 	reachable     bool
 	bypassKeyring map[string]bool
 	helperIssue   string
@@ -70,9 +72,12 @@ type entry struct {
 
 // status decodes session generations used to reject replies from obsolete attempts.
 type status struct {
-	Profile string `json:"profile"`
-	State   string `json:"state"`
-	Attempt uint64 `json:"attempt"`
+	Profile        string `json:"profile"`
+	State          string `json:"state"`
+	Attempt        uint64 `json:"attempt"`
+	Wanted         bool   `json:"wanted"`
+	Initiated      bool   `json:"initiated"`
+	CleanupPending bool   `json:"cleanup_pending"`
 }
 
 // task binds a dialog to one connection and attempt. Its context cancels obsolete UI.
@@ -80,6 +85,7 @@ type task struct {
 	ctx           context.Context
 	event         protocol.Event
 	bypassKeyring bool
+	key           string
 }
 
 // response carries a private dialog result back to the controller, never to logs.
@@ -91,6 +97,7 @@ type response struct {
 	save      bool
 	human     bool
 	keyring   bool
+	key       string
 	err       error
 }
 
@@ -107,7 +114,7 @@ func Run(ctx context.Context, options Options) error {
 	if options.Report == nil {
 		options.Report = func(string) {}
 	}
-	c := controller{options: options, attempts: make(map[string]uint64), bypassKeyring: make(map[string]bool)}
+	c := controller{options: options, attempts: make(map[string]uint64), started: make(map[string]uint64), keys: make(map[string]string), bypassKeyring: make(map[string]bool)}
 	delay := time.Second
 	for ctx.Err() == nil {
 		c.reachable = false
@@ -192,8 +199,8 @@ func call(ctx context.Context, conn Connection, request protocol.Request, out an
 	return conn.Call(ctx, request, out)
 }
 
-// refresh loads profile names and current generations, preserving wanted state for
-// known attempts. New helper attempts replace stale state; invalid IDs are refused.
+// refresh loads profile names, endpoint-bound keys and current helper intent.
+// Snapshots replace stale wanted state, including sessions started from the CLI.
 func (c *controller) refresh(ctx context.Context, conn Connection, pending map[string]context.CancelFunc) error {
 	var entries []entry
 	if err := call(ctx, conn, protocol.Request{Op: "profile.list"}, &entries); err != nil {
@@ -219,18 +226,25 @@ func (c *controller) refresh(ctx context.Context, conn Connection, pending map[s
 			return err
 		}
 		p.Name = config.Name
+		if c.keys == nil {
+			c.keys = make(map[string]string)
+		}
+		c.keys[p.ID] = secrets.Key(&config)
+		p.Wanted = false
+		p.CleanupPending = false
 		for _, s := range states {
 			if s.Profile == p.ID {
 				p.State = session.Phase(s.State)
+				p.Wanted, p.CleanupPending = s.Wanted, s.CleanupPending
+				if s.Initiated && c.started[p.ID] != 0 && s.Attempt > c.started[p.ID] {
+					c.started[p.ID] = s.Attempt
+				}
 				c.attempts[p.ID] = s.Attempt
 				if pending[p.ID] == nil {
 					p.PendingPassword = p.State == session.WaitingPassword || p.State == session.WaitingCode || p.State == session.WaitingTrust
 				}
 				break
 			}
-		}
-		if p.State != session.Disconnected && p.State != session.Failed && p.State != session.Stopping {
-			p.Wanted = true
 		}
 		next = append(next, p)
 	}
@@ -305,6 +319,12 @@ func (c *controller) connected(ctx context.Context, conn Connection) (quit, heal
 			if p == nil || e.Attempt < c.attempts[e.Profile] {
 				continue
 			}
+			if (e.Type == "challenge" || e.Type == "cert") && c.started[e.Profile] != e.Attempt {
+				continue
+			}
+			if e.Type == "state" && e.Initiated && c.started[e.Profile] != 0 && e.Attempt > c.started[e.Profile] {
+				c.started[e.Profile] = e.Attempt
+			}
 			if e.Attempt > c.attempts[e.Profile] {
 				if stop := pending[e.Profile]; stop != nil {
 					stop()
@@ -317,6 +337,8 @@ func (c *controller) connected(ctx context.Context, conn Connection) (quit, heal
 			case "state":
 				previous := p.State
 				c.attempts[e.Profile], p.State = e.Attempt, session.Phase(e.State)
+				p.Wanted = e.Wanted
+				p.CleanupPending = e.CleanupPending
 				if p.State != session.WaitingPassword && p.State != session.WaitingCode && p.State != session.WaitingTrust {
 					if stop := pending[e.Profile]; stop != nil {
 						stop()
@@ -331,18 +353,18 @@ func (c *controller) connected(ctx context.Context, conn Connection) (quit, heal
 				}
 				if p.State == session.Connected {
 					if saved, ok := credentials[p.ID]; ok && saved.event.Attempt == e.Attempt && saved.save && c.options.Preferences.RememberPasswords {
-						if c.options.Store.Set(p.ID, saved.secret) != nil {
+						if c.options.Store.Set(saved.key, saved.secret) != nil {
 							c.options.Report("Password could not be saved in the keyring")
 						} else {
 							delete(c.bypassKeyring, p.ID)
 						}
 					}
 				}
-				if p.State == session.Connected || p.State == session.Failed || p.State == session.Disconnected || p.State == session.Stopping {
+				if p.State == session.Connected || p.State == session.Failed || p.State == session.Disconnected {
 					delete(credentials, p.ID)
 				}
-				if p.State == session.Failed || p.State == session.Disconnected {
-					p.Wanted = false
+				if p.State == session.Disconnected {
+					delete(c.started, p.ID)
 				}
 				c.render()
 				if previous != p.State {
@@ -358,7 +380,7 @@ func (c *controller) connected(ctx context.Context, conn Connection) (quit, heal
 				p.PendingPassword = false
 				c.render()
 				select {
-				case tasks <- task{ctx: taskCtx, event: e, bypassKeyring: c.bypassKeyring[e.Profile]}:
+				case tasks <- task{ctx: taskCtx, event: e, bypassKeyring: c.bypassKeyring[e.Profile], key: c.keys[e.Profile]}:
 				default:
 					stop()
 					c.options.Report("Too many pending VPN prompts")
@@ -426,12 +448,12 @@ func (c *controller) prompts(ctx context.Context, tasks <-chan task, replies cha
 				continue
 			}
 			e := t.event
-			r := response{ctx: t.ctx, event: e}
+			r := response{ctx: t.ctx, event: e, key: t.key}
 			if e.Type == "cert" {
-				r.confirmed, r.err = c.options.Dialog.Confirm(t.ctx, "fortix certificate", fmt.Sprintf("Profile: %s\nSHA-256: %s\nSubject: %q\nIssuer: %q\nTrust this certificate and connect?", e.Profile, e.Digest, e.Subject, e.Issuer))
+				r.confirmed, r.err = c.options.Dialog.Confirm(t.ctx, "fortix certificate", fmt.Sprintf("Profile: %s\nSHA-256: %s\nSubject: %q\nIssuer: %q\nTrust this certificate and connect?", e.Profile, e.Digest, certificateText(e.Subject), certificateText(e.Issuer)))
 			} else {
 				if e.Kind == "password" && !t.bypassKeyring {
-					r.secret, r.err = c.options.Store.Get(e.Profile)
+					r.secret, r.err = c.options.Store.Get(t.key)
 					r.keyring = r.err == nil
 				} else {
 					r.err = secrets.ErrNotFound
@@ -482,19 +504,40 @@ func (c *controller) localAction(ctx context.Context, action string) bool {
 // up records desired connectivity only after the helper accepts an attempt.
 func (c *controller) up(ctx context.Context, conn Connection, p *model.Profile) error {
 	var result struct {
-		Attempt uint64 `json:"attempt"`
+		Attempt        uint64 `json:"attempt"`
+		Wanted         bool   `json:"wanted"`
+		Initiated      bool   `json:"initiated"`
+		CleanupPending bool   `json:"cleanup_pending"`
 	}
 	if err := call(ctx, conn, protocol.Request{Op: "up", Profile: p.ID}, &result); err != nil {
 		return err
 	}
 	p.Wanted, p.State = true, session.Starting
 	c.attempts[p.ID] = result.Attempt
+	if c.started == nil {
+		c.started = make(map[string]uint64)
+	}
+	c.started[p.ID] = result.Attempt
 	return nil
 }
 
 // action toggles individual profiles or all eligible profiles and opens only
 // known profile logs. No desktop action can supply a command or arbitrary path.
 func (c *controller) action(ctx context.Context, conn Connection, action string) error {
+	if strings.HasPrefix(action, "forget:") {
+		id := strings.TrimPrefix(action, "forget:")
+		if c.find(id) == nil || !profile.ValidID(id) {
+			return errors.New("unknown password profile")
+		}
+		err := c.options.Store.Delete(c.keys[id])
+		if errors.Is(err, secrets.ErrNotFound) {
+			err = nil
+		}
+		if err == nil {
+			c.bypassKeyring[id] = true
+		}
+		return err
+	}
 	if strings.HasPrefix(action, "logs:") {
 		id := strings.TrimPrefix(action, "logs:")
 		if c.find(id) == nil || !profile.ValidID(id) {
@@ -533,7 +576,7 @@ func (c *controller) action(ctx context.Context, conn Connection, action string)
 		if p == nil {
 			return errors.New("unknown profile")
 		}
-		if p.State == session.Disconnected || p.State == session.Failed {
+		if p.State == session.Disconnected || (p.State == session.Failed && !p.CleanupPending) {
 			return c.up(ctx, conn, p)
 		}
 		if err := call(ctx, conn, protocol.Request{Op: "down", Profile: p.ID}, nil); err != nil {
@@ -558,4 +601,15 @@ func (c *controller) notify(ctx context.Context, p *model.Profile) {
 	if c.options.Notify(ctx, "fortix", p.Name+": "+string(p.State)) != nil {
 		c.options.Report("Desktop notification unavailable")
 	}
+}
+
+// certificateText caps untrusted certificate identities before quoting for display.
+// A rune boundary preserves valid text while keeping oversized subjects readable.
+func certificateText(text string) string {
+	const limit = 256
+	runes := []rune(text)
+	if len(runes) > limit {
+		return string(runes[:limit]) + "..."
+	}
+	return text
 }

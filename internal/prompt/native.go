@@ -5,6 +5,7 @@ package prompt
 import (
 	"context"
 	"errors"
+	"html"
 	"io"
 	"os"
 	"os/exec"
@@ -173,7 +174,7 @@ func (n Native) dialog(ctx context.Context, title, message string, password bool
 			if password {
 				mode = "--password"
 			}
-			args = []string{"--title=" + title, mode, "--", message}
+			args = []string{"--title=" + html.EscapeString(title), mode, "--", html.EscapeString(message)}
 		} else {
 			return nil, false, ErrUnavailable
 		}

@@ -43,7 +43,7 @@ func TestBuildCommand(t *testing.T) {
 				if routes == "custom" {
 					setting = "0"
 				}
-				want := []string{o.Executable, "vpn.example.com:10443", "-u", "jane.doe", "--pinentry=" + o.Pinentry, "-c", "/dev/null", "--set-dns=0", "--pppd-use-peerdns=0", "--set-routes=" + setting}
+				want := []string{o.Executable, "vpn.example.com:10443", "--pinentry=" + o.Pinentry, "-c", "/dev/fd/3", "--set-dns=0", "--pppd-use-peerdns=0", "--set-routes=" + setting}
 				if mfa != "push" {
 					want = append(want, "--no-ftm-push")
 				}
@@ -75,7 +75,7 @@ func TestCommandOptionalFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if argv[1] != "[2001:db8::1]:10443" || argv[3] != p.Username || argv[4] != "--realm=work" || argv[5] != "--trusted-cert="+strings.Repeat("ab", 32) {
+	if argv[1] != "[2001:db8::1]:10443" || argv[2] != "--trusted-cert="+strings.Repeat("ab", 32) {
 		t.Fatalf("optional fields changed: %q", argv)
 	}
 	if !reflect.DeepEqual(*p, before) {

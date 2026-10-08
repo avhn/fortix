@@ -229,8 +229,8 @@ func Install(ctx context.Context, o Options) error {
 		mode os.FileMode
 		gid  int
 	}{
-		{i.paths.BinaryDir, 0755, 0}, {i.paths.Profiles, 0755, 0},
-		{i.paths.State, 0700, 0}, {i.paths.Logs, 0750, i.gid},
+		{i.paths.BinaryDir, 0755, 0}, {i.paths.Profiles, 0750, i.gid},
+		{i.paths.State, 0700, 0}, {i.paths.Logs, 0700, 0},
 		{filepath.Dir(i.paths.ControlSocket), 0755, i.gid},
 		{filepath.Dir(i.paths.PinentrySocket), 0700, 0},
 		{filepath.Dir(i.paths.ServiceFile), 0755, 0},
@@ -238,6 +238,9 @@ func Install(ctx context.Context, o Options) error {
 		if err := i.directory(dir.path, dir.mode, dir.gid); err != nil {
 			return err
 		}
+	}
+	if err := i.profileModes(); err != nil {
+		return err
 	}
 	// Finish dependency rewriting and signing before replacing running helper files.
 	if o.OpenFortiVPN != "" {

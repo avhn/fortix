@@ -10,10 +10,10 @@ There is no per-user owner field and no administrator approval for each edit.
 Use `fortix profile validate <file>` before `fortix profile add <file>`.
 `profile add` creates or replaces a stored inactive profile; an active profile
 cannot be replaced or deleted. Local edits do not affect the stored copy until
-added again. `profile show <id>` prints that copy and `profile rm <id>` removes
+added again. `profile show <id>` prints that copy and `profile rm <id>` (or `profile remove <id>`) removes
 an inactive copy.
 
-Stored profiles are root-owned `0644` files under:
+Stored profiles are `root:fortix 0640` files in a `root:fortix 0750` directory under:
 
 - macOS: `/Library/Application Support/fortix/profiles/`
 - Linux: `/etc/fortix/profiles/`
@@ -21,7 +21,7 @@ Stored profiles are root-owned `0644` files under:
 The helper refuses symlinks, unsafe ownership/modes, traversal, and non-regular
 files. Drafts can be kept wherever the user chooses, but should not contain
 secrets. Stored usernames and gateway names are configuration, not encrypted
-personal data, and can be readable by local users.
+personal data, but stored copies are readable only by root and fortix members.
 
 The decoder accepts one object of at most 64 KiB, with no trailing JSON,
 unknown fields, duplicate keys (including nested keys), or null values.
@@ -49,7 +49,7 @@ paths have no schema fields and are rejected.
 | `routes.include` | Nonempty list of canonical, masked IPv4 CIDRs; /8..32; no duplicate/overlapping entries; allowed only for `custom` | Absent |
 | `routes.preserve_lan` | Boolean; explicit false is preserved | `true` |
 | `dns.mode` | `none` or `split` | `none` |
-| `dns.domains` | 1..32 lowercase DNS names, without wildcard/trailing dot or duplicates; allowed only for `split` | Absent |
+| `dns.domains` | 1..32 lowercase DNS names with at least two labels, without wildcard/trailing dot or duplicates; allowed only for `split` | Absent |
 
 Hostnames use ASCII DNS labels, at most 63 characters per label and 253 total,
 with no leading/trailing label hyphen. IP address literals must not contain a
@@ -77,7 +77,9 @@ by user preferences or CLI `--save`, not by a profile field.
 
 `custom` disables openfortivpn route installation and installs only included
 IPv4 prefixes on the tunnel link. `gateway` and `full` enable openfortivpn's
-route handling; `full` does not independently synthesize a default route if
+route handling, but `gateway` rejects default and split-default routes pushed
+on its own tunnel link. Use `full` to allow those routes. `full` does not
+independently synthesize a default route if
 the gateway does not provide one. Only one full tunnel can be reserved at once.
 
 `preserve_lan` is accepted and defaults to true but does not yet add LAN bypass

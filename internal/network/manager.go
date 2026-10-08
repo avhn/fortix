@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/netip"
 	"path/filepath"
 	"runtime"
@@ -32,11 +33,12 @@ func (e *ConflictError) Error() string { return e.Detail }
 // not merely when a link loses its IPv4 address.
 // Tests must inject Runner before applying resources, even when paths are relocated.
 type Options struct {
-	Paths      paths.Paths
-	OS         string
-	Runner     Runner
-	Subnets    func() ([]InterfaceSubnet, error)
-	LinkExists func(string) (bool, error)
+	Paths           paths.Paths
+	OS              string
+	Runner          Runner
+	Subnets         func() ([]InterfaceSubnet, error)
+	LinkExists      func(string) (bool, error)
+	VerifyInterface func(string, netip.Addr) error
 }
 
 // tunnel reserves configured prefixes and full mode while an attempt is in flight.
@@ -50,14 +52,15 @@ type tunnel struct {
 // Manager serializes ownership transactions and conflict reservations across profiles.
 // Failed cleanup retains reservations, preventing new attempts from overlapping leaks.
 type Manager struct {
-	mu          sync.Mutex
-	transaction chan struct{}
-	os          string
-	paths       paths.Paths
-	runner      Runner
-	subnets     func() ([]InterfaceSubnet, error)
-	linkExists  func(string) (bool, error)
-	active      map[string]tunnel
+	mu              sync.Mutex
+	transaction     chan struct{}
+	os              string
+	paths           paths.Paths
+	runner          Runner
+	subnets         func() ([]InterfaceSubnet, error)
+	linkExists      func(string) (bool, error)
+	verifyInterface func(string, netip.Addr) error
+	active          map[string]tunnel
 }
 
 // New initializes an inert adapter without running commands or accessing host paths.
@@ -78,10 +81,13 @@ func New(o Options) (*Manager, error) {
 	if o.Subnets == nil {
 		o.Subnets = ConnectedSubnets
 	}
+	if o.VerifyInterface == nil {
+		o.VerifyInterface = verifyInterface
+	}
 	if o.LinkExists == nil {
 		o.LinkExists = InterfaceExists
 	}
-	return &Manager{os: o.OS, paths: o.Paths, runner: o.Runner, subnets: o.Subnets, linkExists: o.LinkExists, active: make(map[string]tunnel), transaction: make(chan struct{}, 1)}, nil
+	return &Manager{os: o.OS, paths: o.Paths, runner: o.Runner, subnets: o.Subnets, linkExists: o.LinkExists, verifyInterface: o.VerifyInterface, active: make(map[string]tunnel), transaction: make(chan struct{}, 1)}, nil
 }
 
 // CheckUp reserves p's custom prefixes or full mode after inspecting active profiles,
@@ -234,6 +240,9 @@ func (m *Manager) Apply(ctx context.Context, p *profile.Profile, effect session.
 	if err := p.Validate(); err != nil {
 		return errors.New("invalid network profile")
 	}
+	if err := m.verifyInterface(effect.Interface, effect.LocalIP); err != nil {
+		return &InterfaceError{}
+	}
 	m.mu.Lock()
 	if err := m.addresses(p.ID, effect.LocalIP); err != nil {
 		m.mu.Unlock()
@@ -356,6 +365,13 @@ func (m *Manager) apply(ctx context.Context, p *profile.Profile, effect session.
 func (m *Manager) checkPushedRoutes(id, link string, routes []JournalRoute) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.active[id].profile.Routes.Mode == "gateway" {
+		for _, route := range routes {
+			if route.Interface == link && netip.MustParsePrefix(route.CIDR).Bits() <= 1 {
+				return &ConflictError{"gateway mode rejects default and split-default routes on the tunnel; use full mode"}
+			}
+		}
+	}
 	for otherID, other := range m.active {
 		if otherID == id {
 			continue
@@ -443,4 +459,33 @@ func (m *Manager) teardown(ctx context.Context, j Journal) error {
 	}
 	failures = append(failures, ctx.Err())
 	return errors.Join(failures...)
+}
+
+// InterfaceError refuses network changes when the kernel cannot prove the tunnel link.
+// Its fixed diagnostic can be shown to clients without exposing host command output.
+type InterfaceError struct{}
+
+// Error returns the public explanation of the refused interface binding.
+func (*InterfaceError) Error() string {
+	return "tunnel interface missing or does not carry the negotiated local IP"
+}
+
+// verifyInterface compares the reported interface and local address with kernel state.
+// Missing links, unreadable addresses and mismatches fail before route or DNS writes.
+func verifyInterface(name string, address netip.Addr) error {
+	link, err := net.InterfaceByName(name)
+	if err != nil {
+		return err
+	}
+	addresses, err := link.Addrs()
+	if err != nil {
+		return err
+	}
+	for _, actual := range addresses {
+		prefix, err := netip.ParsePrefix(actual.String())
+		if err == nil && prefix.Addr().Unmap() == address.Unmap() {
+			return nil
+		}
+	}
+	return &InterfaceError{}
 }

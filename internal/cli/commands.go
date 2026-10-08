@@ -60,6 +60,7 @@ type credential struct {
 	attempt uint64
 	secret  string
 	keyring bool
+	key     string
 }
 
 // runner carries invocation-local context, streams, dependencies, and socket ownership.
@@ -124,6 +125,9 @@ func parseCommand(args []string, output, helpOutput io.Writer) (command, error) 
 		}
 		c.name += " " + rest[0]
 		rest = rest[1:]
+	}
+	if c.name == "profile remove" {
+		c.name = "profile rm"
 	}
 	fs := flag.NewFlagSet(c.name, flag.ContinueOnError)
 	fs.SetOutput(output)
@@ -375,13 +379,16 @@ type profileState struct {
 
 // statusEntry decodes every status field without importing privileged helper implementation.
 type statusEntry struct {
-	Profile   string    `json:"profile"`
-	State     string    `json:"state"`
-	Detail    string    `json:"detail"`
-	Attempt   uint64    `json:"attempt"`
-	Interface string    `json:"interface"`
-	LocalIP   string    `json:"local_ip"`
-	Since     time.Time `json:"since"`
+	Wanted         bool      `json:"wanted"`
+	Initiated      bool      `json:"initiated"`
+	CleanupPending bool      `json:"cleanup_pending"`
+	Profile        string    `json:"profile"`
+	State          string    `json:"state"`
+	Detail         string    `json:"detail"`
+	Attempt        uint64    `json:"attempt"`
+	Interface      string    `json:"interface"`
+	LocalIP        string    `json:"local_ip"`
+	Since          time.Time `json:"since"`
 }
 
 // status prints the full snapshot as JSON or the requested human-readable table.
@@ -394,7 +401,7 @@ func (r *runner) status(asJSON bool) error {
 		return writeJSON(r.out, entries)
 	}
 	table := tabwriter.NewWriter(r.out, 0, 4, 2, ' ', 0)
-	if _, err := fmt.Fprintln(table, "PROFILE\tSTATE\tINTERFACE\tLOCAL IP\tSINCE"); err != nil {
+	if _, err := fmt.Fprintln(table, "PROFILE\tSTATE\tINTERFACE\tLOCAL IP\tSINCE\tDETAIL"); err != nil {
 		return err
 	}
 	for _, entry := range entries {
@@ -402,7 +409,7 @@ func (r *runner) status(asJSON bool) error {
 		if !entry.Since.IsZero() {
 			since = entry.Since.Format(time.RFC3339)
 		}
-		if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\n", entry.Profile, entry.State, entry.Interface, entry.LocalIP, since); err != nil {
+		if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n", entry.Profile, entry.State, entry.Interface, entry.LocalIP, since, entry.Detail); err != nil {
 			return err
 		}
 	}
@@ -413,8 +420,16 @@ func (r *runner) status(asJSON bool) error {
 // Setting requires a hidden terminal prompt; clearing a missing entry is idempotent.
 func (r *runner) password(c command) error {
 	id := c.ids[0]
+	if err := r.connect(); err != nil {
+		return err
+	}
+	defer func() { _ = r.conn.Close() }()
+	key, err := r.credentialKey(id)
+	if err != nil {
+		return err
+	}
 	if c.name == "password clear" {
-		err := r.options.Secrets.Delete(id)
+		err := r.options.Secrets.Delete(key)
 		if errors.Is(err, secrets.ErrNotFound) {
 			return nil
 		}
@@ -427,7 +442,7 @@ func (r *runner) password(c command) error {
 		}
 		return err
 	}
-	return r.options.Secrets.Set(id, password)
+	return r.options.Secrets.Set(key, password)
 }
 
 // importProfiles prints secret-free drafts and optionally installs them over the socket.
@@ -483,9 +498,14 @@ func (r *runner) answer(event protocol.Event, save bool) error {
 	var secret string
 	var err error
 	prompted := false
+	key := ""
 	switch event.Kind {
 	case "password":
-		secret, err = r.options.Secrets.Get(event.Profile)
+		key, err = r.credentialKey(event.Profile)
+		if err != nil {
+			return err
+		}
+		secret, err = r.options.Secrets.Get(key)
 		if err != nil && !errors.Is(err, secrets.ErrNotFound) && !errors.Is(err, secrets.ErrUnavailable) {
 			return err
 		}
@@ -510,7 +530,7 @@ func (r *runner) answer(event protocol.Event, save bool) error {
 		if r.credentials == nil {
 			r.credentials = make(map[string]credential)
 		}
-		value := credential{attempt: event.Attempt, keyring: !prompted}
+		value := credential{attempt: event.Attempt, keyring: !prompted, key: key}
 		if prompted && save {
 			value.secret = secret
 		}
@@ -540,7 +560,7 @@ func (r *runner) finishCredential(event protocol.Event) error {
 	}
 	delete(r.credentials, event.Profile)
 	if event.State == "connected" && value.secret != "" {
-		if err := r.options.Secrets.Set(event.Profile, value.secret); err != nil {
+		if err := r.options.Secrets.Set(value.key, value.secret); err != nil {
 			_, outputErr := fmt.Fprintf(r.errout, "password not saved: %s\n", err)
 			return outputErr
 		}
@@ -724,4 +744,17 @@ func (r *runner) transition(event protocol.Event, last map[string]string) error 
 	}
 	_, err := fmt.Fprintf(r.out, "%s: %s (%q)\n", event.Profile, event.State, event.Detail)
 	return err
+}
+
+// credentialKey reads the helper-owned profile identity before accessing a password.
+// Active profiles cannot be edited; retained credentials keep this exact key until saved.
+func (r *runner) credentialKey(id string) (string, error) {
+	var p profile.Profile
+	if err := r.call(protocol.Request{Op: "profile.get", Profile: id}, &p); err != nil {
+		return "", err
+	}
+	if p.ID != id {
+		return "", errors.New("helper returned incorrect credential profile")
+	}
+	return secrets.Key(&p), nil
 }

@@ -259,8 +259,8 @@ func (p *Profile) validateDNS(add func(string, string)) {
 	seen := make(map[string]bool, len(p.DNS.Domains))
 	for i, domain := range p.DNS.Domains {
 		field := fmt.Sprintf("dns.domains[%d]", i)
-		if !validDNSName(domain) || strings.ToLower(domain) != domain {
-			add(field, "must be a lowercase DNS name without trailing dot or wildcard")
+		if !validDNSName(domain) || !strings.Contains(domain, ".") || strings.ToLower(domain) != domain {
+			add(field, "must be a lowercase DNS name with at least two labels, without trailing dot or wildcard")
 		}
 		if seen[domain] {
 			add(field, "duplicate domain")

@@ -73,7 +73,7 @@ func TestInstallUninstall(t *testing.T) {
 				if err := Install(context.Background(), o); err != nil {
 					t.Fatal(err)
 				}
-				for path, mode := range map[string]os.FileMode{p.BinaryDir: 0755, p.Profiles: 0755, p.State: 0700, p.Logs: 0750, filepath.Dir(p.ControlSocket): 0755, filepath.Dir(p.PinentrySocket): 0700, p.ServiceFile: 0644, p.Pinentry: 0755} {
+				for path, mode := range map[string]os.FileMode{p.BinaryDir: 0755, p.Profiles: 0750, p.State: 0700, p.Logs: 0700, filepath.Dir(p.ControlSocket): 0755, filepath.Dir(p.PinentrySocket): 0700, p.ServiceFile: 0644, p.Pinentry: 0755} {
 					info, err := os.Stat(path)
 					if err != nil || info.Mode().Perm() != mode {
 						t.Fatalf("%s mode: %v %v", path, info, err)
@@ -97,7 +97,7 @@ func TestInstallUninstall(t *testing.T) {
 				}
 				found := false
 				for _, entry := range ownership {
-					if reflect.DeepEqual(entry, []any{p.Logs, 0, 42}) {
+					if reflect.DeepEqual(entry, []any{p.Logs, 0, 0}) {
 						found = true
 					}
 				}

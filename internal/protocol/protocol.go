@@ -24,12 +24,13 @@ type Code string
 
 // Error codes are shared by clients and the helper; none contain caller input.
 const (
-	Unauthorized Code = "UNAUTHORIZED"
-	NotFound     Code = "NOT_FOUND"
-	Invalid      Code = "INVALID"
-	Conflict     Code = "CONFLICT"
-	Busy         Code = "BUSY"
-	Internal     Code = "INTERNAL"
+	Unauthorized      Code = "UNAUTHORIZED"
+	NotFound          Code = "NOT_FOUND"
+	Invalid           Code = "INVALID"
+	Conflict          Code = "CONFLICT"
+	Busy              Code = "BUSY"
+	Internal          Code = "INTERNAL"
+	InterfaceMismatch Code = "INTERFACE_MISMATCH"
 )
 
 // Error is a public operation failure with a stable code and secret-free message.
@@ -53,6 +54,7 @@ type Request struct {
 	Secret      string          `json:"secret,omitempty"`
 	Digest      string          `json:"digest,omitempty"`
 	Lines       int             `json:"lines,omitempty"`
+	Logs        bool            `json:"logs,omitempty"`
 }
 
 // Result is the single reply to a request. Data is operation-specific and omitted
@@ -68,19 +70,22 @@ type Result struct {
 // Event carries one state, challenge, certificate, or redacted log notification.
 // Attempt distinguishes successive children for the same profile; secrets are absent.
 type Event struct {
-	Type        string `json:"type"`
-	Profile     string `json:"profile"`
-	Attempt     uint64 `json:"attempt"`
-	State       string `json:"state,omitempty"`
-	Detail      string `json:"detail,omitempty"`
-	ChallengeID string `json:"challenge_id,omitempty"`
-	Kind        string `json:"kind,omitempty"`
-	Prompt      string `json:"prompt,omitempty"`
-	Digest      string `json:"digest,omitempty"`
-	Subject     string `json:"subject,omitempty"`
-	Issuer      string `json:"issuer,omitempty"`
-	Line        string `json:"line,omitempty"`
-	Code        Code   `json:"code,omitempty"`
+	Type           string `json:"type"`
+	Profile        string `json:"profile"`
+	Attempt        uint64 `json:"attempt"`
+	State          string `json:"state,omitempty"`
+	Detail         string `json:"detail,omitempty"`
+	ChallengeID    string `json:"challenge_id,omitempty"`
+	Kind           string `json:"kind,omitempty"`
+	Prompt         string `json:"prompt,omitempty"`
+	Digest         string `json:"digest,omitempty"`
+	Subject        string `json:"subject,omitempty"`
+	Issuer         string `json:"issuer,omitempty"`
+	Line           string `json:"line,omitempty"`
+	Code           Code   `json:"code,omitempty"`
+	Wanted         bool   `json:"wanted"`
+	Initiated      bool   `json:"initiated"`
+	CleanupPending bool   `json:"cleanup_pending"`
 }
 
 // MarshalJSON emits only the fields defined for this event kind, including empty
@@ -89,6 +94,9 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	fields := map[string]any{"type": e.Type, "profile": e.Profile, "attempt": e.Attempt}
 	switch e.Type {
 	case "state":
+		fields["wanted"] = e.Wanted
+		fields["initiated"] = e.Initiated
+		fields["cleanup_pending"] = e.CleanupPending
 		fields["state"] = e.State
 		fields["detail"] = e.Detail
 		if e.Code != "" {
@@ -279,7 +287,7 @@ func (r Request) Validate() error {
 		return invalid
 	}
 	allowed := map[string]string{
-		"hello": "version", "subscribe": "", "profile.list": "", "profile.get": "profile",
+		"hello": "version", "subscribe": "logs", "profile.list": "", "profile.get": "profile",
 		"profile.put": "profile_json", "profile.delete": "profile", "up": "profile", "down": "profile all",
 		"status": "", "answer": "challenge_id secret", "cancel": "challenge_id", "trust": "profile digest", "logs": "profile lines",
 	}
@@ -288,7 +296,7 @@ func (r Request) Validate() error {
 		return invalid
 	}
 	present := map[string]bool{"version": r.Version != "", "profile": r.Profile != "", "profile_json": len(r.ProfileJSON) > 0,
-		"all": r.All, "challenge_id": r.ChallengeID != "", "secret": r.Secret != "", "digest": r.Digest != "", "lines": r.Lines != 0}
+		"logs": r.Logs, "all": r.All, "challenge_id": r.ChallengeID != "", "secret": r.Secret != "", "digest": r.Digest != "", "lines": r.Lines != 0}
 	for field, has := range present {
 		if has && !strings.Contains(" "+args+" ", " "+field+" ") {
 			return invalid

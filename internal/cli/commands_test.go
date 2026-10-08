@@ -18,6 +18,7 @@ import (
 
 	"github.com/avhn/fortix/internal/client"
 	"github.com/avhn/fortix/internal/importer"
+	"github.com/avhn/fortix/internal/profile"
 	"github.com/avhn/fortix/internal/protocol"
 	"github.com/avhn/fortix/internal/secrets"
 	"github.com/avhn/fortix/internal/userconfig"
@@ -86,6 +87,7 @@ func fakeSocket(t *testing.T, handler fakeHandler) string {
 		mu.Unlock()
 		defer func() { _ = conn.Close() }()
 		reader := protocol.NewReader(conn)
+		hadUp := false
 		for {
 			var req protocol.Request
 			if err := reader.Read(&req); err != nil {
@@ -98,11 +100,15 @@ func fakeSocket(t *testing.T, handler fakeHandler) string {
 			var data any
 			var events []protocol.Event
 			var failure *protocol.Error
-			if req.Op == "hello" {
+			switch {
+			case req.Op == "hello":
 				data = map[string]any{"helper_version": "test", "protocol": 1}
-			} else {
+			case req.Op == "profile.get" && hadUp:
+				data = credentialProfile(req.Profile)
+			default:
 				data, events, failure = handler(req)
 			}
+			hadUp = hadUp || req.Op == "up"
 			for _, event := range events {
 				if err := protocol.Write(conn, event); err != nil {
 					return
@@ -163,7 +169,7 @@ func TestUpCredentials(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &secrets.Memory{}
 			if tc.hit {
-				if err := store.Set("work", "test-password"); err != nil {
+				if err := store.Set(secrets.Key(credentialProfile("work")), "test-password"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -241,7 +247,7 @@ func TestUpCredentials(t *testing.T) {
 			if len(p.labels) != prompts {
 				t.Fatalf("prompt count %d, want %d", len(p.labels), prompts)
 			}
-			_, getErr := store.Get("work")
+			_, getErr := store.Get(secrets.Key(credentialProfile("work")))
 			if (tc.hit || ((tc.remember || tc.save) && !tc.fail)) != (getErr == nil) {
 				t.Fatal("save policy not respected")
 			}
@@ -419,8 +425,11 @@ func TestImport(t *testing.T) {
 // TestPasswordManagement verifies hidden set, idempotent clear, and no secret in command output.
 func TestPasswordManagement(t *testing.T) {
 	store := &secrets.Memory{}
-	options := testOptions("", store, &fakePrompt{responses: []string{"test-password"}}, false)
 	for _, args := range [][]string{{"password", "set", "work"}, {"password", "clear", "work"}, {"password", "clear", "work"}} {
+		socket := fakeSocket(t, func(req protocol.Request) (any, []protocol.Event, *protocol.Error) {
+			return credentialProfile(req.Profile), nil, nil
+		})
+		options := testOptions(socket, store, &fakePrompt{responses: []string{"test-password"}}, false)
 		code, out, diag := runCommand(t, args, options)
 		if code != 0 || strings.Contains(out+diag, "test-password") {
 			t.Fatalf("code %d: %s", code, diag)
@@ -670,4 +679,12 @@ func TestHelperOutputFailures(t *testing.T) {
 			t.Fatalf("%v %d %s", args, code, &diag)
 		}
 	}
+}
+
+// credentialProfile returns a stable helper-owned account for credential fixtures.
+// Endpoint and username match the shared valid profile without carrying a password.
+func credentialProfile(id string) *profile.Profile {
+	p := &profile.Profile{SchemaVersion: 1, ID: id, Name: "Work", Backend: "openfortivpn", Gateway: profile.Gateway{Host: "vpn.example.com", Port: 10443}, Username: "jane.doe"}
+	p.ApplyDefaults()
+	return p
 }

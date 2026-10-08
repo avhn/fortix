@@ -108,7 +108,7 @@ func (f *fakeRunner) Run(ctx context.Context, candidates []string, args ...strin
 func testManager(t *testing.T, platform string) (*Manager, *fakeRunner) {
 	t.Helper()
 	f := &fakeRunner{os: platform, dns: make(map[string][]string), domains: make(map[string][]string)}
-	m, err := New(Options{OS: platform, Paths: paths.Paths{ResolverDir: filepath.Join(t.TempDir(), "resolver"), SkipTrust: true}, Runner: f, LinkExists: func(name string) (bool, error) { return name == "ppp0" || name == "ppp1", nil }, Subnets: func() ([]InterfaceSubnet, error) {
+	m, err := New(Options{OS: platform, Paths: paths.Paths{ResolverDir: filepath.Join(t.TempDir(), "resolver"), SkipTrust: true}, Runner: f, VerifyInterface: func(string, netip.Addr) error { return nil }, LinkExists: func(name string) (bool, error) { return name == "ppp0" || name == "ppp1", nil }, Subnets: func() ([]InterfaceSubnet, error) {
 		return []InterfaceSubnet{{"ppp0", netip.MustParsePrefix("10.99.0.2/32")}}, nil
 	}})
 	if err != nil {

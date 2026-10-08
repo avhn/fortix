@@ -57,6 +57,7 @@ type Server struct {
 // subscribers. All fields are protected by the server mutex, not the actor goroutine.
 type challengeRoute struct {
 	actor  *supervisor
+	uid    uint32
 	origin *connection
 	event  protocol.Event
 }
@@ -70,6 +71,8 @@ type tokenBinding struct {
 // connection serializes result/event writes and bounds slow-reader blocking.
 // Subscriptions and the open flag are protected by the server registry mutex.
 type connection struct {
+	uid              uint32
+	logs             bool
 	socket           *net.UnixConn
 	events           chan protocol.Event
 	mu               sync.Mutex
@@ -132,15 +135,29 @@ func (s *Server) Serve(ctx context.Context) error {
 		mode os.FileMode
 	}{
 		{filepath.Dir(s.opts.Paths.ControlSocket), 0755}, {filepath.Dir(s.opts.Paths.PinentrySocket), 0700},
-		{s.opts.Paths.Profiles, 0755}, {s.opts.Paths.State, 0700}, {s.opts.Paths.Logs, 0700},
+		{s.opts.Paths.Profiles, 0750}, {s.opts.Paths.State, 0700}, {s.opts.Paths.Logs, 0700},
 	} {
 		if !s.opts.Paths.SkipTrust {
 			if err := trustedAncestor(d.path); err != nil {
 				return err
 			}
 		}
+		_, beforeErr := os.Lstat(d.path)
 		if err := secureDir(d.path, d.mode); err != nil {
 			return err
+		}
+		if d.path == s.opts.Paths.Profiles && os.Geteuid() == 0 && errors.Is(beforeErr, os.ErrNotExist) {
+			group, err := user.LookupGroup("fortix")
+			if err != nil {
+				return err
+			}
+			gid, err := strconv.Atoi(group.Gid)
+			if err != nil {
+				return err
+			}
+			if err := os.Chown(d.path, 0, gid); err != nil {
+				return err
+			}
 		}
 	}
 	stateDir, err := openDirectory(s.opts.Paths.State)
@@ -306,7 +323,7 @@ func (s *Server) control(socket *net.UnixConn) {
 		return
 	}
 	s.opts.Logger.Info("control connection", "uid", peer.UID)
-	c := &connection{socket: socket, open: true, events: make(chan protocol.Event, 64)}
+	c := &connection{uid: peer.UID, socket: socket, open: true, events: make(chan protocol.Event, 64)}
 	if err := s.opts.Authorize(peer); err != nil {
 		_ = c.write(protocol.Result{Type: "result", OK: false, Error: &protocol.Error{Code: protocol.Unauthorized, Message: "peer is not authorized"}})
 		return
@@ -377,20 +394,27 @@ func (c *connection) write(message any) error {
 }
 
 // emit delivers an event to subscribers or exclusively to a still-open initiating
-// connection for a challenge. Failed writes close the client rather than queueing
-// unbounded data. No caller may hold s.mu while emitting.
-func (s *Server) emit(event protocol.Event, origin *connection) {
+// connection for challenges and certificates. Fallback is restricted to the owner UID
+// or root. Logs require an explicit log subscription. Failed writes close the client
+// rather than queueing unbounded data. No caller may hold s.mu while emitting.
+func (s *Server) emit(event protocol.Event, origin *connection, owner ...uint32) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	private := event.Type == "challenge" || event.Type == "cert"
+	uid := uint32(0)
+	if len(owner) > 0 {
+		uid = owner[0]
+	}
 	if event.Type == "challenge" {
 		if route := s.challenges[event.ChallengeID]; route != nil {
+			uid = route.uid
 			route.event = event
 			if origin != nil && origin.open {
 				route.origin = origin
 			}
 		}
 	}
-	if origin != nil && origin.open {
+	if private && origin != nil && origin.open && (origin.uid == uid || origin.uid == 0) {
 		select {
 		case origin.events <- event:
 			return
@@ -404,8 +428,11 @@ func (s *Server) emit(event protocol.Event, origin *connection) {
 		route.origin = nil
 	}
 	for c := range s.clients {
-		if !c.subscribed || !c.open {
+		if !c.subscribed || !c.open || (private && c.uid != uid && c.uid != 0) || (event.Type == "log" && !c.logs) {
 			continue
+		}
+		if event.Type == "state" {
+			event.Initiated = c == origin
 		}
 		select {
 		case c.events <- event:
@@ -471,7 +498,7 @@ func (s *Server) detach(c *connection) {
 		}
 		route.origin = nil
 		for subscriber := range s.clients {
-			if !subscriber.subscribed || !subscriber.open {
+			if !subscriber.subscribed || !subscriber.open || (subscriber.uid != route.uid && subscriber.uid != 0) {
 				continue
 			}
 			select {

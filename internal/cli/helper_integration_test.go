@@ -119,7 +119,7 @@ func TestRealHelperTrust(t *testing.T) {
 			t.Fatalf("%v: code %d output %s diagnostics %s", step.args, code, out, diag)
 		}
 	}
-	if password, err := store.Get("work"); err != nil || password != "fixture-password" {
+	if password, err := store.Get(secrets.Key(credentialProfile("work"))); err != nil || password != "fixture-password" {
 		t.Fatal("successful attempt did not save its prompted password")
 	}
 }

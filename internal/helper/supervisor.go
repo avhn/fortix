@@ -91,6 +91,7 @@ type supervisor struct {
 	state         session.State
 	snapshotMu    sync.Mutex
 	public        Status
+	publicOrigin  *connection
 	idleState     bool
 	controls      chan controlInput
 	events        chan session.Event
@@ -102,6 +103,7 @@ type supervisor struct {
 	token         string
 	pending       *pendingPIN
 	origin        *connection
+	ownerUID      uint32
 	log           *rotatingLog
 	networkCancel context.CancelFunc
 	networkDone   <-chan struct{}
@@ -121,7 +123,7 @@ func (a *supervisor) snapshot() Status {
 	return a.public
 }
 
-// idle reports whether editing/deletion can proceed without a live or wanted child.
+// idle reports whether editing/deletion can proceed without a live child or incomplete cleanup.
 func (a *supervisor) idle() bool {
 	a.snapshotMu.Lock()
 	defer a.snapshotMu.Unlock()
@@ -141,7 +143,8 @@ func (a *supervisor) publish() {
 	if a.state.LocalIP.IsValid() {
 		ip = a.state.LocalIP.String()
 	}
-	a.public = Status{Profile: a.state.Profile, State: a.state.Phase, Detail: a.state.Detail, Attempt: a.state.Attempt, Interface: a.state.Interface, LocalIP: ip, Since: since}
+	a.publicOrigin = a.origin
+	a.public = Status{Wanted: a.state.Wanted, CleanupPending: a.state.Phase == session.Failed && !a.state.Cleaned, Profile: a.state.Profile, State: a.state.Phase, Detail: a.state.Detail, Attempt: a.state.Attempt, Interface: a.state.Interface, LocalIP: ip, Since: since}
 	a.idleState = a.state.Phase == session.Disconnected || (a.state.Phase == session.Failed && a.state.Exited && a.state.Cleaned)
 }
 
@@ -225,9 +228,15 @@ func (a *supervisor) event(kind session.EventKind) session.Event {
 func (a *supervisor) control(input controlInput) bool {
 	reply := controlReply{}
 	defer clear(input.secret)
+	if input.op == "answer" || input.op == "cancel" || input.op == "trust" {
+		if input.origin == nil || (input.origin.uid != a.ownerUID && input.origin.uid != 0) {
+			input.reply <- controlReply{code: protocol.Unauthorized}
+			return false
+		}
+	}
 	switch input.op {
 	case "up":
-		if a.state.Wanted && a.state.Phase != session.Backoff {
+		if a.state.Wanted && a.state.Phase != session.Backoff && a.state.Phase != session.Failed && a.state.Phase != session.Stopping {
 			input.reply <- controlReply{status: a.snapshot()}
 			return false
 		}
@@ -250,6 +259,7 @@ func (a *supervisor) control(input controlInput) bool {
 			}
 		}
 		a.origin = input.origin
+		a.ownerUID = input.origin.uid
 		next, effects := session.Next(a.state, a.event(session.Up))
 		if !queued && !slices.ContainsFunc(effects, func(e session.Effect) bool { return e.Kind == session.StartProcess }) {
 			a.releaseNetworkReservation()
@@ -311,7 +321,7 @@ func (a *supervisor) control(input controlInput) bool {
 		input.ask.id = id
 		a.pending = input.ask
 		a.server.mu.Lock()
-		a.server.challenges[id] = &challengeRoute{actor: a}
+		a.server.challenges[id] = &challengeRoute{actor: a, uid: a.ownerUID}
 		a.server.mu.Unlock()
 		e := a.event(session.Challenge)
 		e.Request = input.ask.request
@@ -380,7 +390,16 @@ func (a *supervisor) effects(effects []session.Effect) {
 				if errors.As(err, &conflict) {
 					a.reduce(a.networkFailure(err))
 				} else {
-					a.reduce(a.event(session.AttemptFailed))
+					a.server.opts.Logger.Error("openfortivpn start failed", "profile", a.id, "error", err)
+					detail := "openfortivpn not found or not trusted; see helper log"
+					if a.log != nil {
+						if logErr := a.log.write(detail + ": " + a.log.redact(err.Error())); logErr != nil {
+							a.server.opts.Logger.Error("profile start log failed", "profile", a.id, "error", logErr)
+						}
+					}
+					event := a.event(session.AttemptFailed)
+					event.Failure, event.Detail = session.ProcessFailure, detail
+					a.reduce(event)
 				}
 				a.reduce(a.event(session.ProcessExited))
 				return
@@ -402,16 +421,19 @@ func (a *supervisor) effects(effects []session.Effect) {
 			a.network(e, true)
 		case session.EmitState:
 			code := protocol.Code("")
+			if e.Phase == session.Failed && a.state.Failure == session.InterfaceFailure {
+				code = protocol.InterfaceMismatch
+			}
 			if e.Phase == session.Failed && a.state.Failure == session.ConflictFailure {
 				code = protocol.Conflict
 			}
-			a.server.emit(protocol.Event{Type: "state", Profile: e.Profile, Attempt: e.Attempt, State: string(e.Phase), Detail: e.Detail, Code: code}, nil)
+			a.server.emit(protocol.Event{Type: "state", Wanted: a.state.Wanted, CleanupPending: e.Phase == session.Failed && !a.state.Cleaned, Profile: e.Profile, Attempt: e.Attempt, State: string(e.Phase), Detail: e.Detail, Code: code}, a.origin)
 		case session.EmitChallenge:
 			if a.pending != nil {
 				a.server.emit(protocol.Event{Type: "challenge", Profile: e.Profile, Attempt: e.Attempt, ChallengeID: a.pending.id, Kind: string(e.Request.Kind), Prompt: e.Request.Prompt}, a.origin)
 			}
 		case session.EmitCert:
-			a.server.emit(protocol.Event{Type: "cert", Profile: e.Profile, Attempt: e.Attempt, Digest: e.Certificate.Digest, Subject: e.Certificate.Subject, Issuer: e.Certificate.Issuer}, nil)
+			a.server.emit(protocol.Event{Type: "cert", Profile: e.Profile, Attempt: e.Attempt, Digest: e.Certificate.Digest, Subject: e.Certificate.Subject, Issuer: e.Certificate.Issuer}, a.origin, a.ownerUID)
 		case session.PersistTrust: // The synchronous trust operation already persisted the exact captured digest.
 		}
 	}
@@ -423,6 +445,14 @@ func (a *supervisor) effects(effects []session.Effect) {
 func (a *supervisor) start() error {
 	a.command = nil
 	a.journal = Journal{Profile: a.profile.ID, Attempt: a.state.Attempt}
+	log, err := openLogAt(a.server.logDir, a.profile.ID)
+	if err != nil {
+		return err
+	}
+	if a.log != nil {
+		_ = a.log.Close()
+	}
+	a.log = log
 	if err := a.checkNetworkUp(); err != nil {
 		return err
 	}
@@ -438,15 +468,22 @@ func (a *supervisor) start() error {
 	if err != nil {
 		return err
 	}
-	log, err := openLogAt(a.server.logDir, a.profile.ID)
+	log.protect([]byte(token))
+	config, err := openfortivpn.Config(a.profile)
 	if err != nil {
 		return err
 	}
-	if a.log != nil {
-		_ = a.log.Close()
+	configR, configW, err := os.Pipe()
+	if err != nil {
+		return err
 	}
-	a.log = log
-	log.protect([]byte(token))
+	defer func() { _ = configR.Close(); _ = configW.Close(); clear(config) }()
+	if _, err := configW.Write(config); err != nil {
+		return err
+	}
+	if err := configW.Close(); err != nil {
+		return err
+	}
 	outR, outW, err := os.Pipe()
 	if err != nil {
 		return err
@@ -459,6 +496,7 @@ func (a *supervisor) start() error {
 	}
 	defer func() { _ = errW.Close() }()
 	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.ExtraFiles = []*os.File{configR}
 	cmd.Env = env
 	cmd.Dir = openfortivpn.WorkingDirectory
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -606,6 +644,10 @@ func (a *supervisor) network(effect session.Effect, remove bool) {
 			if err != nil {
 				event.Kind = session.AttemptFailed
 				event.Detail = "route or split DNS configuration failed; cleanup required"
+				var link *network.InterfaceError
+				if errors.As(err, &link) {
+					event.Failure, event.Detail = session.InterfaceFailure, link.Error()
+				}
 				var conflict *network.ConflictError
 				if errors.As(err, &conflict) {
 					event.Failure, event.Detail = session.ConflictFailure, conflict.Detail
@@ -648,4 +690,14 @@ func (a *supervisor) networkFailure(err error) session.Event {
 		e.Failure, e.Detail = session.ConflictFailure, conflict.Detail
 	}
 	return e
+}
+
+// snapshotFor adds connection-local attempt provenance under the public-view lock.
+// Ordinary observers see state without gaining prompt ownership of a CLI attempt.
+func (a *supervisor) snapshotFor(c *connection) Status {
+	a.snapshotMu.Lock()
+	defer a.snapshotMu.Unlock()
+	status := a.public
+	status.Initiated = a.publicOrigin == c
+	return status
 }

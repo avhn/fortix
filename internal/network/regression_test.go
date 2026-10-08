@@ -81,8 +81,8 @@ func TestObservedDefaultConflicts(t *testing.T) {
 		{"gateway split defaults", "gateway", "gateway", "0.0.0.0/1", "128.0.0.0/1", "ppp0", true},
 		{"split then ordinary default", "gateway", "full", "128.0.0.0/1", "0.0.0.0/0", "ppp0", true},
 		{"disjoint gateway routes", "gateway", "gateway", "10.20.0.0/16", "10.30.0.0/16", "ppp0", false},
-		{"one gateway default", "gateway", "gateway", "10.20.0.0/16", "0.0.0.0/0", "ppp0", false},
-		{"LAN default", "gateway", "gateway", "0.0.0.0/0", "0.0.0.0/0", "en0", false},
+		{"one gateway default", "gateway", "gateway", "10.20.0.0/16", "0.0.0.0/0", "ppp0", true},
+		{"LAN default", "gateway", "full", "0.0.0.0/0", "0.0.0.0/0", "en0", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, f := testManager(t, "linux")

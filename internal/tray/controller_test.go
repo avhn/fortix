@@ -23,11 +23,14 @@ import (
 
 // fakeConnection replies to snapshots and records all mutations without sockets.
 type fakeConnection struct {
-	events chan protocol.Event
-	calls  chan protocol.Request
-	fail   string
-	phase  string
-	once   sync.Once
+	events          chan protocol.Event
+	calls           chan protocol.Request
+	fail            string
+	phase           string
+	attempt         uint64
+	snapshotAttempt uint64
+	initiated       bool
+	once            sync.Once
 }
 
 // newConnection returns a bounded, initially disconnected helper fixture.
@@ -50,13 +53,14 @@ func (f *fakeConnection) Call(_ context.Context, r protocol.Request, out any) er
 		if phase == "" {
 			phase = "disconnected"
 		}
-		data = []status{{Profile: "work", State: phase}}
+		data = []status{{Profile: "work", State: phase, Wanted: phase != "disconnected" && phase != "stopping", Attempt: f.snapshotAttempt, Initiated: f.initiated}}
 	case "profile.get":
 		data = profile.Profile{ID: "work", Name: "Work"}
 	case "logs":
 		data = []string{"redacted diagnostic"}
 	case "up":
-		data = map[string]uint64{"attempt": 1}
+		f.attempt++
+		data = map[string]uint64{"attempt": f.attempt}
 	}
 	if out != nil {
 		raw, err := json.Marshal(data)
@@ -256,7 +260,7 @@ func TestChallengeFlow(t *testing.T) {
 			if tc.kind == "code" {
 				phase = "waiting_code"
 			}
-			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: phase}
+			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: phase, Wanted: true}
 			conn.events <- protocol.Event{Type: "challenge", Profile: "work", Attempt: 1, Kind: tc.kind, ChallengeID: "challenge-1", Prompt: "Password or code"}
 			op := "answer"
 			if tc.cancel {
@@ -284,7 +288,7 @@ func TestChallengeFlow(t *testing.T) {
 				t.Fatal("password saved before connection success")
 			default:
 			}
-			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "connected"}
+			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "connected", Wanted: true}
 			awaitMenu(t, view, func(m model.Menu) bool { return m.Status == model.Connected })
 			if !tc.cached && tc.remember && !tc.cancel && tc.kind == "password" {
 				select {
@@ -316,7 +320,9 @@ func TestCertificateConfirmation(t *testing.T) {
 			dialog := fakeDialog{confirm: func(_ context.Context, message string) (bool, error) { shown <- message; return yes, nil }}
 			startController(t, Options{View: view, Store: &fakeStore{}, Dialog: dialog, Dial: func(context.Context) (Connection, error) { return conn, nil }})
 			awaitCall(t, conn, "profile.get")
-			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_trust"}
+			view.actions <- "profile:work"
+			awaitCall(t, conn, "up")
+			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_trust", Wanted: true}
 			digest := strings.Repeat("a", 64)
 			conn.events <- protocol.Event{Type: "cert", Profile: "work", Attempt: 1, Digest: digest, Subject: "vpn.example.com\nIssuer: forged\t\x1b", Issuer: "<span>Example issuer</span> &"}
 			select {
@@ -371,7 +377,9 @@ func TestRestartCancelsPrompt(t *testing.T) {
 		return second, nil
 	}})
 	awaitCall(t, first, "profile.get")
-	first.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password"}
+	view.actions <- "profile:work"
+	awaitCall(t, first, "up")
+	first.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password", Wanted: true}
 	first.events <- protocol.Event{Type: "challenge", Profile: "work", Attempt: 1, Kind: "password", ChallengeID: "old"}
 	select {
 	case <-started:
@@ -472,10 +480,12 @@ func TestFailedAttemptDoesNotSave(t *testing.T) {
 	dialog := fakeDialog{password: func(context.Context) (string, error) { return "incorrect-secret", nil }}
 	startController(t, Options{View: view, Store: store, Dialog: dialog, Preferences: userconfig.Defaults(), Dial: func(context.Context) (Connection, error) { return conn, nil }})
 	awaitCall(t, conn, "profile.get")
-	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password"}
+	view.actions <- "profile:work"
+	awaitCall(t, conn, "up")
+	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password", Wanted: true}
 	conn.events <- protocol.Event{Type: "challenge", Profile: "work", Attempt: 1, Kind: "password", ChallengeID: "rejected"}
 	awaitCall(t, conn, "answer")
-	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "failed"}
+	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "failed", Wanted: true}
 	awaitMenu(t, view, func(m model.Menu) bool { return m.Status == model.Attention })
 	select {
 	case <-store.saved:
@@ -503,20 +513,23 @@ func TestNewGenerationCancelsPrompt(t *testing.T) {
 	}}
 	startController(t, Options{View: view, Store: &fakeStore{err: secrets.ErrNotFound}, Dialog: dialog, Dial: func(context.Context) (Connection, error) { return conn, nil }})
 	awaitCall(t, conn, "profile.get")
-	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password"}
+	view.actions <- "profile:work"
+	awaitCall(t, conn, "up")
+	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password", Wanted: true}
 	conn.events <- protocol.Event{Type: "challenge", Profile: "work", Attempt: 1, Kind: "password", ChallengeID: "old"}
 	select {
 	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("old prompt not started")
 	}
-	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 2, State: "waiting_code"}
+	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "backoff", Wanted: true}
+	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 2, State: "waiting_code", Wanted: true, Initiated: true}
 	select {
 	case <-cancelled:
 	case <-time.After(time.Second):
 		t.Fatal("old generation prompt not cancelled")
 	}
-	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "failed"}
+	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "failed", Wanted: true}
 	conn.events <- protocol.Event{Type: "challenge", Profile: "work", Attempt: 2, Kind: "code", ChallengeID: "new"}
 	answer := awaitCall(t, conn, "answer")
 	if answer.ChallengeID != "new" || answer.Secret != "fresh-code" {
@@ -543,10 +556,12 @@ func TestKeyringLookupDoesNotRequestAttention(t *testing.T) {
 	}}
 	startController(t, Options{View: view, Store: store, Dialog: dialog, Dial: func(context.Context) (Connection, error) { return conn, nil }})
 	awaitCall(t, conn, "profile.get")
-	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password"}
+	view.actions <- "profile:work"
+	awaitCall(t, conn, "up")
+	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password", Wanted: true}
 	conn.events <- protocol.Event{Type: "challenge", Profile: "work", Attempt: 1, Kind: "password", ChallengeID: "cached"}
 	awaitCall(t, conn, "answer")
-	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "connected"}
+	conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "connected", Wanted: true}
 	timer := time.NewTimer(time.Second)
 	defer timer.Stop()
 	for {
@@ -575,13 +590,30 @@ func TestSavedPasswordRecovery(t *testing.T) {
 			dialog := fakeDialog{password: func(context.Context) (string, error) { return "replacement-password", nil }}
 			startController(t, Options{View: view, Store: store, Dialog: dialog, Preferences: userconfig.Defaults(), Dial: func(context.Context) (Connection, error) { return conn, nil }})
 			awaitCall(t, conn, "profile.get")
-			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password"}
+			view.actions <- "profile:work"
+			awaitCall(t, conn, "up")
+			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "waiting_password", Wanted: true}
 			conn.events <- protocol.Event{Type: "challenge", Profile: "work", Attempt: 1, Kind: "password", ChallengeID: "first"}
 			if r := awaitCall(t, conn, "answer"); r.Secret != "old-password" {
 				t.Fatal("initial keyring lookup missing")
 			}
-			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: terminal}
-			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 2, State: "waiting_password"}
+			for len(view.menus) > 0 {
+				<-view.menus
+			}
+			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "stopping", Wanted: true}
+			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: terminal, Wanted: terminal != "disconnected"}
+			awaitMenu(t, view, func(m model.Menu) bool {
+				return strings.Contains(m.Items[0].Title, "("+map[string]string{"failed": "Failed", "connected": "Connected", "disconnected": "Disconnected"}[terminal]+")")
+			})
+			if terminal == "connected" {
+				view.actions <- "profile:work"
+				awaitCall(t, conn, "down")
+				conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "disconnected", Wanted: false}
+				awaitMenu(t, view, func(m model.Menu) bool { return strings.Contains(m.Items[0].Title, "(Disconnected)") })
+			}
+			view.actions <- "profile:work"
+			awaitCall(t, conn, "up")
+			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 2, State: "waiting_password", Wanted: true}
 			conn.events <- protocol.Event{Type: "challenge", Profile: "work", Attempt: 2, Kind: "password", ChallengeID: "second"}
 			want := "old-password"
 			if terminal == "failed" {
@@ -590,7 +622,7 @@ func TestSavedPasswordRecovery(t *testing.T) {
 			if r := awaitCall(t, conn, "answer"); r.Secret != want || r.ChallengeID != "second" {
 				t.Fatal("wrong password recovery")
 			}
-			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 2, State: "connected"}
+			conn.events <- protocol.Event{Type: "state", Profile: "work", Attempt: 2, State: "connected", Wanted: true}
 			if terminal == "failed" {
 				select {
 				case password := <-store.saved:

@@ -23,6 +23,9 @@ import (
 // descriptor-based rejection of symlinks, FIFOs, directories, and unsafe modes.
 func TestStoreSafety(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.Chmod(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	store, err := OpenStore(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -45,8 +48,8 @@ func TestStoreSafety(t *testing.T) {
 		t.Fatalf("round trip: %v", err)
 	}
 	info, err := os.Stat(filepath.Join(dir, "work.json"))
-	if err != nil || info.Mode().Perm() != 0644 {
-		t.Fatal("profile mode is not 0644")
+	if err != nil || info.Mode().Perm() != 0640 {
+		t.Fatal("profile mode is not 0640")
 	}
 	if _, err := store.Put(bytes.Replace(raw, []byte(`"work"`), []byte(`"work","password":"forbidden"`), 1)); err == nil {
 		t.Fatal("secret-bearing profile accepted")

@@ -65,6 +65,8 @@ func TestLogsDuringPrompt(t *testing.T) {
 				}
 			case "status":
 				data = []statusEntry{}
+			case "profile.get":
+				data = credentialProfile(req.Profile)
 			case "answer":
 				if err := protocol.Write(remote, protocol.Event{Type: "state", Profile: "work", Attempt: 1, State: "connected"}); err != nil {
 					return
@@ -73,7 +75,7 @@ func TestLogsDuringPrompt(t *testing.T) {
 			if err := protocol.Write(remote, protocol.Result{Type: "result", ID: req.ID, OK: true, Data: data}); err != nil {
 				return
 			}
-			if req.Op == "status" && started {
+			if req.Op == "profile.get" && started {
 				select {
 				case <-p.started:
 				case <-time.After(2 * time.Second):
@@ -151,17 +153,17 @@ func TestCredentialGeneration(t *testing.T) {
 	for _, state := range []string{"connected", "failed", "disconnected"} {
 		t.Run(state, func(t *testing.T) {
 			store := &secrets.Memory{}
-			r := runner{options: Options{Secrets: store}, errout: io.Discard, credentials: map[string]credential{"work": {attempt: 2, secret: "fixture-password"}}}
+			r := runner{options: Options{Secrets: store}, errout: io.Discard, credentials: map[string]credential{"work": {attempt: 2, secret: "fixture-password", key: secrets.Key(credentialProfile("work"))}}}
 			if err := r.finishCredential(protocol.Event{Profile: "work", Attempt: 1, State: "connected"}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := store.Get("work"); !errors.Is(err, secrets.ErrNotFound) {
+			if _, err := store.Get(secrets.Key(credentialProfile("work"))); !errors.Is(err, secrets.ErrNotFound) {
 				t.Fatal("stale attempt saved a password")
 			}
 			if err := r.finishCredential(protocol.Event{Profile: "work", Attempt: 2, State: state}); err != nil {
 				t.Fatal(err)
 			}
-			_, err := store.Get("work")
+			_, err := store.Get(secrets.Key(credentialProfile("work")))
 			if (err == nil) != (state == "connected") || len(r.credentials) != 0 {
 				t.Fatal("incorrect credential lifetime")
 			}
@@ -188,7 +190,10 @@ func TestReviewDiagnostics(t *testing.T) {
 			t.Fatalf("%v: %d %s", args, code, diag)
 		}
 	}
-	code, _, diag = runCommand(t, []string{"password", "set", "work"}, testOptions("", &secrets.Memory{}, &fakePrompt{err: prompt.ErrUnavailable}, false))
+	passwordSocket := fakeSocket(t, func(req protocol.Request) (any, []protocol.Event, *protocol.Error) {
+		return credentialProfile(req.Profile), nil, nil
+	})
+	code, _, diag = runCommand(t, []string{"password", "set", "work"}, testOptions(passwordSocket, &secrets.Memory{}, &fakePrompt{err: prompt.ErrUnavailable}, false))
 	if code != 1 || !strings.Contains(diag, "password set needs an interactive terminal") {
 		t.Fatal(diag)
 	}

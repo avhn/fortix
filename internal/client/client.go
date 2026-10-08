@@ -21,25 +21,27 @@ import (
 // Options selects an explicit socket or platform paths and an optional transport for tests.
 // A nonempty Socket overrides the environment; Dial must honor context cancellation.
 type Options struct {
-	Socket      string
-	Paths       paths.Override
-	Dial        func(context.Context, string, string) (net.Conn, error)
-	DiscardLogs bool // Suppress diagnostic log events when the consumer only needs connection progress.
+	Socket        string
+	Paths         paths.Override
+	Dial          func(context.Context, string, string) (net.Conn, error)
+	SubscribeLogs bool // Request live diagnostics only when explicitly enabled.
+	DiscardLogs   bool // Suppress diagnostic log events when the consumer only needs connection progress.
 }
 
 // Client owns one socket, one reader, bounded events, and outstanding request channels.
 // Callers must drain Events while subscribing; overflow closes the connection rather than losing challenges.
 type Client struct {
-	conn        net.Conn
-	writes      chan struct{}
-	mu          sync.Mutex
-	pending     map[string]chan reply
-	next        uint64
-	err         error
-	done        chan struct{}
-	events      chan protocol.Event
-	stopped     chan struct{}
-	discardLogs bool
+	conn          net.Conn
+	writes        chan struct{}
+	mu            sync.Mutex
+	pending       map[string]chan reply
+	next          uint64
+	err           error
+	done          chan struct{}
+	events        chan protocol.Event
+	stopped       chan struct{}
+	discardLogs   bool
+	subscribeLogs bool
 }
 
 // reply contains either a helper result or a terminal transport failure.
@@ -51,22 +53,26 @@ type reply struct {
 // frame decodes the shared result and event envelope without changing wire fields.
 // Data remains raw JSON so operation callers can select a concrete response type.
 type frame struct {
-	Type        string          `json:"type"`
-	ID          string          `json:"id,omitempty"`
-	OK          bool            `json:"ok,omitempty"`
-	Error       *protocol.Error `json:"error,omitempty"`
-	Data        json.RawMessage `json:"data,omitempty"`
-	Profile     string          `json:"profile,omitempty"`
-	Attempt     uint64          `json:"attempt,omitempty"`
-	State       string          `json:"state,omitempty"`
-	Detail      string          `json:"detail,omitempty"`
-	ChallengeID string          `json:"challenge_id,omitempty"`
-	Kind        string          `json:"kind,omitempty"`
-	Prompt      string          `json:"prompt,omitempty"`
-	Digest      string          `json:"digest,omitempty"`
-	Subject     string          `json:"subject,omitempty"`
-	Issuer      string          `json:"issuer,omitempty"`
-	Line        string          `json:"line,omitempty"`
+	Type           string          `json:"type"`
+	Code           protocol.Code   `json:"code,omitempty"`
+	Wanted         bool            `json:"wanted,omitempty"`
+	Initiated      bool            `json:"initiated,omitempty"`
+	CleanupPending bool            `json:"cleanup_pending,omitempty"`
+	ID             string          `json:"id,omitempty"`
+	OK             bool            `json:"ok,omitempty"`
+	Error          *protocol.Error `json:"error,omitempty"`
+	Data           json.RawMessage `json:"data,omitempty"`
+	Profile        string          `json:"profile,omitempty"`
+	Attempt        uint64          `json:"attempt,omitempty"`
+	State          string          `json:"state,omitempty"`
+	Detail         string          `json:"detail,omitempty"`
+	ChallengeID    string          `json:"challenge_id,omitempty"`
+	Kind           string          `json:"kind,omitempty"`
+	Prompt         string          `json:"prompt,omitempty"`
+	Digest         string          `json:"digest,omitempty"`
+	Subject        string          `json:"subject,omitempty"`
+	Issuer         string          `json:"issuer,omitempty"`
+	Line           string          `json:"line,omitempty"`
 }
 
 // OperationError identifies a helper rejection without retaining any request payload.
@@ -125,7 +131,7 @@ func Dial(ctx context.Context, o Options) (*Client, error) {
 		}
 		return nil, errors.New("fortix helper is not running or its socket is unavailable; ask an administrator to install and start fortix-helper (Linux: systemctl start fortix-helper; macOS: launchctl kickstart system/com.github.avhn.fortix.helper)")
 	}
-	c := &Client{conn: conn, writes: make(chan struct{}, 1), pending: make(map[string]chan reply), done: make(chan struct{}), events: make(chan protocol.Event, 256), stopped: make(chan struct{}), discardLogs: o.DiscardLogs}
+	c := &Client{conn: conn, writes: make(chan struct{}, 1), pending: make(map[string]chan reply), done: make(chan struct{}), events: make(chan protocol.Event, 256), stopped: make(chan struct{}), discardLogs: o.DiscardLogs, subscribeLogs: o.SubscribeLogs}
 	c.writes <- struct{}{}
 	go c.read()
 	var hello struct {
@@ -173,6 +179,9 @@ func (c *Client) fail(err error) {
 // Call assigns a unique ID, sends r, and decodes the matching result into dst when non-nil.
 // Context cancellation interrupts writes and waits; helper and decode errors never include request secrets.
 func (c *Client) Call(ctx context.Context, r protocol.Request, dst any) error {
+	if r.Op == "subscribe" {
+		r.Logs = (r.Logs || c.subscribeLogs) && !c.discardLogs
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -292,7 +301,7 @@ func (c *Client) read() {
 		if f.Type == "log" && c.discardLogs {
 			continue
 		}
-		event := protocol.Event{Type: f.Type, Profile: f.Profile, Attempt: f.Attempt, State: f.State, Detail: f.Detail, ChallengeID: f.ChallengeID, Kind: f.Kind, Prompt: f.Prompt, Digest: f.Digest, Subject: f.Subject, Issuer: f.Issuer, Line: f.Line}
+		event := protocol.Event{Code: f.Code, Wanted: f.Wanted, Initiated: f.Initiated, CleanupPending: f.CleanupPending, Type: f.Type, Profile: f.Profile, Attempt: f.Attempt, State: f.State, Detail: f.Detail, ChallengeID: f.ChallengeID, Kind: f.Kind, Prompt: f.Prompt, Digest: f.Digest, Subject: f.Subject, Issuer: f.Issuer, Line: f.Line}
 		select {
 		case c.events <- event:
 		case <-c.done:
