@@ -310,3 +310,25 @@ func TestPointToPointSubnet(t *testing.T) {
 		t.Fatalf("lan subnet: %+v", got)
 	}
 }
+
+// TestInternalNameservers verifies that public resolvers pushed next to internal
+// ones are dropped, and that an all-public list is kept rather than emptied.
+func TestInternalNameservers(t *testing.T) {
+	addrs := func(values ...string) []netip.Addr {
+		result := make([]netip.Addr, 0, len(values))
+		for _, value := range values {
+			result = append(result, netip.MustParseAddr(value))
+		}
+		return result
+	}
+	cases := []struct{ in, want []netip.Addr }{
+		{addrs("10.30.3.179", "8.8.8.8"), addrs("10.30.3.179")},
+		{addrs("8.8.8.8", "100.100.1.1", "192.168.5.1"), addrs("100.100.1.1", "192.168.5.1")},
+		{addrs("8.8.8.8", "1.1.1.1"), addrs("8.8.8.8", "1.1.1.1")},
+	}
+	for _, tc := range cases {
+		if got := internalNameservers(tc.in); !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("internalNameservers(%v) = %v, want %v", tc.in, got, tc.want)
+		}
+	}
+}

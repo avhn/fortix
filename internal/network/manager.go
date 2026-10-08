@@ -351,6 +351,7 @@ func (m *Manager) apply(ctx context.Context, p *profile.Profile, effect session.
 				return errors.New("invalid negotiated nameserver")
 			}
 		}
+		effect.DNS = internalNameservers(effect.DNS)
 		if m.os == "darwin" {
 			return m.applyResolvers(ctx, p, effect, j, persist)
 		}
@@ -488,4 +489,25 @@ func verifyInterface(name string, address netip.Addr) error {
 		}
 	}
 	return &InterfaceError{}
+}
+
+// carrierNAT is the RFC 6598 shared address space, used for internal resolvers
+// alongside the RFC 1918 ranges that netip.Addr.IsPrivate covers.
+var carrierNAT = netip.MustParsePrefix("100.64.0.0/10")
+
+// internalNameservers keeps only private nameservers when the gateway pushes a
+// mix. Gateways often append a public resolver such as 8.8.8.8; resolvers query
+// every listed server, so its fast NXDOMAIN for internal names would win and be
+// cached. If no private server was negotiated, the list is returned unchanged.
+func internalNameservers(servers []netip.Addr) []netip.Addr {
+	var internal []netip.Addr
+	for _, server := range servers {
+		if server.IsPrivate() || carrierNAT.Contains(server) {
+			internal = append(internal, server)
+		}
+	}
+	if len(internal) == 0 {
+		return servers
+	}
+	return internal
 }
