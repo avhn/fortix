@@ -1,0 +1,18 @@
+#!/bin/sh
+# Remove the generated hard link and preserve profiles unless explicitly purged.
+set -eu
+
+case "${1:-}" in
+  remove|purge)
+    rm -f /usr/libexec/fortix/fortix-pinentry
+    if [ -d /run/systemd/system ]; then
+      systemctl daemon-reload
+    fi
+    ;;
+esac
+if [ "${1:-}" = purge ]; then
+  rm -rf /etc/fortix /var/lib/fortix /var/log/fortix
+  if getent group fortix >/dev/null; then
+    groupdel fortix
+  fi
+fi

@@ -1,0 +1,10 @@
+#!/bin/sh
+# Stop the helper before removing or replacing its executable.
+set -eu
+
+if [ -d /run/systemd/system ]; then
+  case "${1:-}" in
+    remove|deconfigure) systemctl disable --now fortix-helper.service ;;
+    upgrade) systemctl stop fortix-helper.service ;;
+  esac
+fi

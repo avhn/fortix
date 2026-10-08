@@ -23,13 +23,7 @@ func platformPaths(_ string, configHome string) (Paths, error) {
 	if !validPath(configHome) {
 		return Paths{}, errors.New("paths: user configuration directory must be a clean absolute path")
 	}
-	return Paths{
-		ControlSocket:  "/run/fortix/fortix.sock",
-		PinentrySocket: "/run/fortix/private/pinentry.sock",
-		Profiles:       "/etc/fortix/profiles",
-		State:          "/var/lib/fortix/state",
-		Logs:           "/var/log/fortix",
-		OpenFortiVPN:   []string{"/usr/bin/openfortivpn", "/usr/sbin/openfortivpn"},
-		Preferences:    filepath.Join(configHome, "fortix/config.json"),
-	}, nil
+	p, err := systemPaths("linux")
+	p.Preferences = filepath.Join(configHome, "fortix/config.json")
+	return p, err
 }

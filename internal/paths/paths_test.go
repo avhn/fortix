@@ -16,8 +16,10 @@ func TestResolve(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Paths{Pinentry: "/usr/local/libexec/fortix/fortix-pinentry"}
+	want := Paths{Pinentry: "/usr/local/libexec/fortix/fortix-pinentry", BinaryDir: "/usr/local/libexec/fortix", CLILink: "/usr/local/bin/fortix", ResolverDir: "/etc/resolver"}
 	if runtime.GOOS == "darwin" {
+		want.ServiceFile = "/Library/LaunchDaemons/com.github.avhn.fortix.helper.plist"
+		want.VPNDir = "/Library/Application Support/fortix/libexec"
 		want.ControlSocket = "/var/run/fortix/fortix.sock"
 		want.PinentrySocket = "/var/run/fortix/private/pinentry.sock"
 		want.Profiles = "/Library/Application Support/fortix/profiles"
@@ -26,6 +28,8 @@ func TestResolve(t *testing.T) {
 		want.OpenFortiVPN = []string{"/Library/Application Support/fortix/libexec/openfortivpn"}
 		want.Preferences = "/home/jane.doe/Library/Application Support/fortix/config.json"
 	} else {
+		want.ServiceFile = "/etc/systemd/system/fortix-helper.service"
+		want.VPNDir = "/usr/local/libexec/fortix/openfortivpn"
 		want.ControlSocket = "/run/fortix/fortix.sock"
 		want.PinentrySocket = "/run/fortix/private/pinentry.sock"
 		want.Profiles = "/etc/fortix/profiles"
@@ -49,7 +53,7 @@ func TestOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	all := make([]string, 0, 7+len(p.OpenFortiVPN))
-	all = append(all, p.ControlSocket, p.PinentrySocket, p.Profiles, p.State, p.Logs, p.Pinentry, p.Preferences)
+	all = append(all, p.ControlSocket, p.PinentrySocket, p.Profiles, p.State, p.Logs, p.Pinentry, p.Preferences, p.BinaryDir, p.CLILink, p.ServiceFile, p.ResolverDir, p.VPNDir)
 	all = append(all, p.OpenFortiVPN...)
 	for _, path := range all {
 		if !strings.HasPrefix(path, root+string(filepath.Separator)) {

@@ -1,0 +1,20 @@
+[Unit]
+Description=fortix privileged VPN helper
+After=network.target
+
+[Service]
+Type=simple
+User=root
+ExecStart={{quote .Helper}}
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=fortix
+RuntimeDirectoryMode=0755
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths={{quote .State}} {{quote .Logs}} {{quote .Config}} -{{quote .Resolver}}
+# NoNewPrivileges is deliberately omitted because pppd needs privileged execution.
+
+[Install]
+WantedBy=multi-user.target

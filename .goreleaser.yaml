@@ -1,0 +1,85 @@
+version: 2
+project_name: fortix
+
+builds:
+  - id: fortix
+    main: ./cmd/fortix
+    binary: fortix
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/avhn/fortix/internal/buildinfo.Version={{.Version}}
+  - id: fortix-helper
+    main: ./cmd/fortix-helper
+    binary: fortix-helper
+    env: [CGO_ENABLED=0]
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/avhn/fortix/internal/buildinfo.Version={{.Version}}
+  - id: tray-linux
+    main: ./cmd/fortix-tray
+    binary: fortix-tray
+    env: [CGO_ENABLED=0]
+    goos: [linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X github.com/avhn/fortix/internal/buildinfo.Version={{.Version}}
+  - id: tray-darwin
+    main: ./cmd/fortix-tray
+    binary: fortix-tray
+    env: [CGO_ENABLED=1]
+    goos: [darwin]
+    goarch: [amd64, arm64]
+    overrides:
+      - goos: darwin
+        goarch: amd64
+        env: [CGO_ENABLED=1, 'CC=clang -target x86_64-apple-macos11']
+      - goos: darwin
+        goarch: arm64
+        env: [CGO_ENABLED=1, 'CC=clang -target arm64-apple-macos11']
+    ldflags:
+      - -s -w -X github.com/avhn/fortix/internal/buildinfo.Version={{.Version}}
+
+archives:
+  - id: fortix
+    ids: [fortix, fortix-helper, tray-linux, tray-darwin]
+    formats: [tar.gz]
+    files: [LICENSE, README.md]
+    builds_info:
+      owner: root
+      group: root
+
+checksum:
+  name_template: checksums.txt
+
+nfpms:
+  - id: deb
+    package_name: fortix
+    ids: [fortix, fortix-helper, tray-linux]
+    formats: [deb]
+    vendor: fortix
+    homepage: https://github.com/avhn/fortix
+    maintainer: fortix maintainers <maintainers@example.com>
+    description: FortiGate SSL VPN profile manager with a CLI and desktop tray.
+    license: MIT
+    bindir: /usr/libexec/fortix
+    dependencies: [openfortivpn, ppp]
+    contents:
+      - src: /usr/libexec/fortix/fortix
+        dst: /usr/bin/fortix
+        type: symlink
+      - src: /usr/libexec/fortix/fortix-tray
+        dst: /usr/bin/fortix-tray
+        type: symlink
+      - src: packaging/fortix-helper.service
+        dst: /usr/lib/systemd/system/fortix-helper.service
+        file_info:
+          owner: root
+          group: root
+          mode: 0644
+    scripts:
+      postinstall: packaging/postinst
+      preremove: packaging/prerm
+      postremove: packaging/postrm

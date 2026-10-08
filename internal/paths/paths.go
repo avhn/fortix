@@ -38,6 +38,11 @@ type Paths struct {
 	Pinentry       string
 	Preferences    string
 	SkipTrust      bool
+	BinaryDir      string
+	CLILink        string
+	ServiceFile    string
+	ResolverDir    string
+	VPNDir         string
 }
 
 // Resolve returns this platform's paths with o applied, without filesystem writes.
@@ -83,6 +88,13 @@ func Resolve(o Override) (Paths, error) {
 		p.Profiles = underRoot(o.RootDir, p.Profiles)
 		p.State = underRoot(o.RootDir, p.State)
 		p.Logs = underRoot(o.RootDir, p.Logs)
+		p.BinaryDir = underRoot(o.RootDir, p.BinaryDir)
+		p.CLILink = underRoot(o.RootDir, p.CLILink)
+		p.ServiceFile = underRoot(o.RootDir, p.ServiceFile)
+		p.ResolverDir = underRoot(o.RootDir, p.ResolverDir)
+		if p.VPNDir != "" {
+			p.VPNDir = underRoot(o.RootDir, p.VPNDir)
+		}
 		if o.HelperPath != "" {
 			// Keep a discovered executable's sibling usable outside the isolated root.
 			p.Pinentry = underRoot(o.RootDir, p.Pinentry)
