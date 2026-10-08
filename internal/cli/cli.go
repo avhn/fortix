@@ -2,11 +2,15 @@
 package cli
 
 import (
+	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/avhn/fortix/internal/buildinfo"
 	"github.com/avhn/fortix/internal/profile"
@@ -15,12 +19,20 @@ import (
 // Run handles args, writes results to stdout and diagnostics to stderr, and returns
 // 0 for success, 1 for invalid input or I/O failure, and 2 for incorrect usage.
 func Run(args []string, stdout, stderr io.Writer) int {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	return RunContext(ctx, args, stdout, stderr, Options{})
+}
+
+// runLocal handles offline version and validation commands without contacting the helper.
+// Incorrect flags return 2; file and output failures return 1.
+func runLocal(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
 		return usage(stderr)
 	}
 	switch args[0] {
 	case "version":
-		if _, code := parse("version", args[1:], 0, stderr); code != 0 {
+		if _, code := parse("version", args[1:], 0, stdout, stderr); code != 0 {
 			return code
 		}
 		if _, err := fmt.Fprintln(stdout, buildinfo.Version); err != nil {
@@ -31,7 +43,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		if len(args) < 2 || args[1] != "validate" {
 			return usage(stderr)
 		}
-		files, code := parse("profile validate", args[2:], 1, stderr)
+		files, code := parse("profile validate", args[2:], 1, stdout, stderr)
 		if code != 0 {
 			return code
 		}
@@ -42,12 +54,24 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 // parse uses a non-exiting standard flag set and requires exactly count positional arguments.
-// It returns arguments and status 0, or status 2 after flag or usage diagnostics.
-func parse(name string, args []string, count int, stderr io.Writer) ([]string, int) {
+// It returns arguments and status 0, status -1 for help, or status 2 for incorrect usage.
+func parse(name string, args []string, count int, stdout, stderr io.Writer) ([]string, int) {
 	flags := flag.NewFlagSet(name, flag.ContinueOnError)
-	flags.SetOutput(stderr)
-	flags.Usage = func() { _ = usage(stderr) }
+	var output bytes.Buffer
+	flags.SetOutput(&output)
+	flags.Usage = func() {
+		operand := ""
+		if count == 1 {
+			operand = " <file>"
+		}
+		_, _ = fmt.Fprintf(&output, "usage: fortix %s%s\n", name, operand)
+	}
 	if err := flags.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			_, _ = io.Copy(stdout, &output)
+			return nil, -1
+		}
+		_, _ = io.Copy(stderr, &output)
 		return nil, 2
 	}
 	if flags.NArg() != count {
@@ -76,7 +100,7 @@ func validateFile(path string, stdout, stderr io.Writer) int {
 // usage writes the supported syntax to stderr and returns usage status 2.
 // Output failures cannot change the usage status because no command was executed.
 func usage(stderr io.Writer) int {
-	_, _ = fmt.Fprintln(stderr, "usage: fortix version | fortix profile validate <file>")
+	_, _ = fmt.Fprintln(stderr, "usage: fortix <command>\n  version\n  profile validate|list|show|add|rm\n  import forticlient\n  password set|clear <id>\n  up <id>...|--all\n  down <id>...|--all\n  status [--json]\n  logs <id>\n  trust <id>")
 	return 2
 }
 

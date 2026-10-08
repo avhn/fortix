@@ -77,6 +77,10 @@ var (
 	certPattern  = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
+// ValidID reports whether id is a safe profile identifier in the supported ASCII alphabet.
+// It does not normalize input or access storage and never returns an error.
+func ValidID(id string) bool { return idPattern.MatchString(id) }
+
 // ApplyDefaults fills omitted port, MFA, routing, and DNS settings in place.
 // It preserves explicit false and TOTP values and never fails.
 func (p *Profile) ApplyDefaults() {
@@ -125,7 +129,7 @@ func (p *Profile) Validate() error {
 	if p.SchemaVersion != 1 {
 		add("schema_version", "must be 1")
 	}
-	if !idPattern.MatchString(p.ID) {
+	if !ValidID(p.ID) {
 		add("id", "must match ^[a-z0-9][a-z0-9-]{0,62}$")
 	}
 	if !validText(p.Name, 1, 64) {

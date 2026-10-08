@@ -35,13 +35,13 @@ func TestRun(t *testing.T) {
 		{"empty", nil, 2, "", "usage:"},
 		{"unknown", []string{"connect"}, 2, "", "usage:"},
 		{"profile missing subcommand", []string{"profile"}, 2, "", "usage:"},
-		{"profile unknown", []string{"profile", "list"}, 2, "", "usage:"},
+		{"profile unknown", []string{"profile", "unknown"}, 2, "", "usage:"},
 		{"validate no file", []string{"profile", "validate"}, 2, "", "usage:"},
 		{"validate extra file", []string{"profile", "validate", valid, valid}, 2, "", "usage:"},
 		{"version extra argument", []string{"version", "extra"}, 2, "", "usage:"},
 		{"version unknown flag", []string{"version", "-unknown"}, 2, "", "flag provided but not defined"},
 		{"validate unknown flag", []string{"profile", "validate", "-unknown"}, 2, "", "flag provided but not defined"},
-		{"help", []string{"version", "-h"}, 2, "", "usage:"},
+		{"help", []string{"version", "-h"}, 0, "usage: fortix version\n", ""},
 		{"validate flag terminator", []string{"profile", "validate", "--", valid}, 0, "ok: work\n", ""},
 	}
 	for _, tc := range tests {
