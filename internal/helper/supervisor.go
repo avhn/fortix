@@ -5,14 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"math/rand/v2"
+	"net/netip"
 	"os"
 	"os/exec"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
 
+	"github.com/avhn/fortix/internal/network"
 	"github.com/avhn/fortix/internal/openfortivpn"
 	"github.com/avhn/fortix/internal/profile"
 	"github.com/avhn/fortix/internal/protocol"
@@ -30,8 +33,22 @@ type Network interface {
 	Recover(context.Context, Journal) error
 }
 
+// NetworkConflicts reserves profile routing before spawn and negotiated addresses
+// before PPP discovery. Optional implementations must serialize checks across profiles.
+type NetworkConflicts interface {
+	CheckUp(context.Context, *profile.Profile) error
+	CheckAddresses(string, netip.Addr) error
+}
+
+// NetworkReservations releases unused pre-spawn policy when a reducer cannot start.
+// Implementations must leave reservations with live or uncleaned links untouched.
+// Release performs no command I/O and must not wait for network transactions.
+type NetworkReservations interface {
+	Release(string)
+}
+
 // NoNetwork leaves host networking unchanged while preserving lifecycle hooks.
-// It is used until an owned-entry network adapter is configured.
+// Tests must explicitly select it when no owned-entry adapter is being exercised.
 type NoNetwork struct{}
 
 // Apply performs no networking and reports success without consulting the host.
@@ -62,6 +79,7 @@ type controlInput struct {
 type controlReply struct {
 	status Status
 	code   protocol.Code
+	detail string
 }
 
 // supervisor owns one reducer, timer, pending challenge, and child process at a time.
@@ -218,8 +236,24 @@ func (a *supervisor) control(input controlInput) bool {
 			input.reply <- controlReply{code: protocol.Busy}
 			return false
 		}
+		if !queued {
+			if err := a.checkNetworkUp(); err != nil {
+				e := a.networkFailure(err)
+				e.Kind = session.UpRefused
+				a.reduce(e)
+				code := protocol.Internal
+				if e.Failure == session.ConflictFailure {
+					code = protocol.Conflict
+				}
+				input.reply <- controlReply{status: a.snapshot(), code: code, detail: e.Detail}
+				return false
+			}
+		}
 		a.origin = input.origin
 		next, effects := session.Next(a.state, a.event(session.Up))
+		if !queued && !slices.ContainsFunc(effects, func(e session.Effect) bool { return e.Kind == session.StartProcess }) {
+			a.releaseNetworkReservation()
+		}
 		a.state = next
 		a.publish()
 		input.reply <- controlReply{status: a.snapshot()}
@@ -232,12 +266,14 @@ func (a *supervisor) control(input controlInput) bool {
 			a.reduce(a.event(session.Down))
 		}
 	case "replace":
+		a.releaseNetworkReservation()
 		a.profile = input.profile
 		attempt := a.state.Attempt
 		a.state = session.New(input.profile.ID, session.Options{MFAMode: input.profile.MFA.Mode, Deadlines: a.server.opts.Deadlines})
 		a.state.Attempt = attempt
 		a.publish()
 	case "retire":
+		a.releaseNetworkReservation()
 		input.reply <- reply
 		return true
 	case "trust":
@@ -309,6 +345,15 @@ func (a *supervisor) control(input controlInput) bool {
 // reduce feeds an observation through the pure reducer, publishes the resulting
 // snapshot, then executes its ordered effects on the same supervisor goroutine.
 func (a *supervisor) reduce(event session.Event) {
+	if event.Profile == a.state.Profile && event.Attempt == a.state.Attempt && event.Kind == session.Output && a.state.Phase == session.Negotiating {
+		if addresses, ok := event.Observation.(openfortivpn.GotAddresses); ok {
+			if checks, ok := a.server.opts.Network.(NetworkConflicts); ok {
+				if err := checks.CheckAddresses(a.id, addresses.LocalIP); err != nil {
+					event = a.networkFailure(err)
+				}
+			}
+		}
+	}
 	next, effects := session.Next(a.state, event)
 	a.state = next
 	a.publish()
@@ -331,7 +376,12 @@ func (a *supervisor) effects(effects []session.Effect) {
 		case session.StartProcess:
 			if err := a.start(); err != nil {
 				a.revoke()
-				a.reduce(a.event(session.AttemptFailed))
+				var conflict *network.ConflictError
+				if errors.As(err, &conflict) {
+					a.reduce(a.networkFailure(err))
+				} else {
+					a.reduce(a.event(session.AttemptFailed))
+				}
 				a.reduce(a.event(session.ProcessExited))
 				return
 			}
@@ -351,7 +401,11 @@ func (a *supervisor) effects(effects []session.Effect) {
 			a.revoke()
 			a.network(e, true)
 		case session.EmitState:
-			a.server.emit(protocol.Event{Type: "state", Profile: e.Profile, Attempt: e.Attempt, State: string(e.Phase), Detail: e.Detail}, nil)
+			code := protocol.Code("")
+			if e.Phase == session.Failed && a.state.Failure == session.ConflictFailure {
+				code = protocol.Conflict
+			}
+			a.server.emit(protocol.Event{Type: "state", Profile: e.Profile, Attempt: e.Attempt, State: string(e.Phase), Detail: e.Detail, Code: code}, nil)
 		case session.EmitChallenge:
 			if a.pending != nil {
 				a.server.emit(protocol.Event{Type: "challenge", Profile: e.Profile, Attempt: e.Attempt, ChallengeID: a.pending.id, Kind: string(e.Request.Kind), Prompt: e.Request.Prompt}, a.origin)
@@ -369,6 +423,9 @@ func (a *supervisor) effects(effects []session.Effect) {
 func (a *supervisor) start() error {
 	a.command = nil
 	a.journal = Journal{Profile: a.profile.ID, Attempt: a.state.Attempt}
+	if err := a.checkNetworkUp(); err != nil {
+		return err
+	}
 	executable, err := a.server.verifyExecutables()
 	if err != nil {
 		return err
@@ -548,6 +605,11 @@ func (a *supervisor) network(effect session.Effect, remove bool) {
 			}
 			if err != nil {
 				event.Kind = session.AttemptFailed
+				event.Detail = "route or split DNS configuration failed; cleanup required"
+				var conflict *network.ConflictError
+				if errors.As(err, &conflict) {
+					event.Failure, event.Detail = session.ConflictFailure, conflict.Detail
+				}
 			}
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -555,4 +617,35 @@ func (a *supervisor) network(effect session.Effect, remove bool) {
 		}
 		a.send(event)
 	}()
+}
+
+// checkNetworkUp reserves conflict policy before spawning any explicit or retry child.
+// Optional adapters are checked under a finite deadline without holding server locks.
+func (a *supervisor) checkNetworkUp() error {
+	if checks, ok := a.server.opts.Network.(NetworkConflicts); ok {
+		ctx, cancel := context.WithTimeout(a.server.ctx, a.state.Deadlines.Network)
+		defer cancel()
+		return checks.CheckUp(ctx, a.profile)
+	}
+	return nil
+}
+
+// releaseNetworkReservation discards unused pre-spawn policy after a no-start outcome,
+// profile replacement or retirement. Optional adapters preserve live/uncleaned ownership.
+func (a *supervisor) releaseNetworkReservation() {
+	if reservations, ok := a.server.opts.Network.(NetworkReservations); ok {
+		reservations.Release(a.id)
+	}
+}
+
+// networkFailure converts adapter failures into safe attempt-bound reducer input.
+// Only typed conflict explanations are public; operating-system diagnostics stay private.
+func (a *supervisor) networkFailure(err error) session.Event {
+	e := a.event(session.AttemptFailed)
+	e.Failure, e.Detail = session.NetworkFailure, "network conflict checks unavailable"
+	var conflict *network.ConflictError
+	if errors.As(err, &conflict) {
+		e.Failure, e.Detail = session.ConflictFailure, conflict.Detail
+	}
+	return e
 }

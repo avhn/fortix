@@ -130,12 +130,14 @@ const (
 	CleanupFailed       EventKind = "cleanup_failed"
 	NetworkApplied      EventKind = "network_applied"
 	AttemptFailed       EventKind = "attempt_failed"
+	UpRefused           EventKind = "up_refused"
 )
 
 // Event contains one attempt-bound input without ever holding an account secret.
 // Observation, Request, Digest, TimerID, Failure, and Jitter apply to their respective
 // kinds. Jitter is a supervisor-provided sample in [0,1], making retry timing pure.
 // ExitCode is diagnostic only: exit before TunnelUp is failure even with code zero.
+// Detail is a helper-controlled explanation for refused or failed networking.
 type Event struct {
 	Profile     string
 	Attempt     uint64
@@ -147,6 +149,7 @@ type Event struct {
 	Failure     Failure
 	Jitter      float64
 	ExitCode    int
+	Detail      string
 }
 
 // EffectKind identifies work the supervisor must perform outside the pure reducer.

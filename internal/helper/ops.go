@@ -141,7 +141,11 @@ func (s *Server) dispatch(c *connection, r protocol.Request) protocol.Result {
 		}
 		reply := a.call(controlInput{op: "up", origin: c})
 		if reply.code != "" {
-			return failure(r.ID, reply.code, "profile cannot start")
+			detail := reply.detail
+			if detail == "" {
+				detail = "profile cannot start"
+			}
+			return failure(r.ID, reply.code, detail)
 		}
 		result.Data = struct {
 			Attempt uint64 `json:"attempt"`

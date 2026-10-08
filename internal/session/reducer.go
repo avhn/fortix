@@ -31,6 +31,12 @@ func Next(s State, e Event) (State, []Effect) {
 			s.Wanted, s.PendingUp = true, true
 			return s, []Effect{stateEffect(s)}
 		}
+	case UpRefused:
+		if s.Phase == Disconnected || s.Phase == Backoff || (s.Phase == Failed && s.Exited && s.Cleaned) {
+			s.Failure, s.Wanted = e.Failure, false
+			s.Exited, s.Cleaned = true, true
+			return transition(s, Failed, e.Detail, 0)
+		}
 	case Down:
 		return down(s)
 	case Reset:
@@ -88,6 +94,10 @@ func Next(s State, e Event) (State, []Effect) {
 			reason := e.Failure
 			if reason == "" {
 				reason = ProcessFailure
+			}
+			if e.Detail != "" && (reason == ConflictFailure || reason == NetworkFailure) {
+				s.Failure = reason
+				return beginStop(s, Failed, e.Detail)
 			}
 			return fail(s, reason, e.Jitter)
 		}

@@ -18,7 +18,8 @@ import (
 
 // Run dispatches pinentry by executable basename or starts the helper service.
 // Development roots are accepted only for non-root callers and contain every path,
-// including the pinentry executable. Normal service execution requires root.
+// including the pinentry executable, and disable host networking. Normal service
+// execution requires root and uses owned route/DNS transactions.
 func Run(ctx context.Context, argv []string, in io.Reader, out, diagnostics io.Writer) error {
 	if len(argv) == 0 {
 		return errors.New("missing executable name")
@@ -65,6 +66,8 @@ func Run(ctx context.Context, argv []string, in io.Reader, out, diagnostics io.W
 	}
 	opts := helper.Options{Paths: p, Logger: slog.New(slog.NewJSONHandler(diagnostics, nil))}
 	if *root != "" {
+		// Development fixtures must never execute host route or DNS commands.
+		opts.Network = helper.NoNetwork{}
 		// The private development root belongs to this user, never a production group.
 		opts.Authorize = func(peer helper.Peer) error {
 			if peer.UID == uint32(os.Geteuid()) {

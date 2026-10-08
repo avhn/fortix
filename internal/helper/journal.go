@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/avhn/fortix/internal/network"
 	"github.com/avhn/fortix/internal/protocol"
 	"github.com/avhn/fortix/internal/session"
 )
@@ -18,31 +19,15 @@ import (
 // Journal identifies one owned process generation without secrets. Network adapters
 // can extend this record with exact owned routes/resolver entries and persist them
 // before applying changes. PID alone never authorizes signalling during recovery.
-type Journal struct {
-	Profile       string            `json:"profile"`
-	Attempt       uint64            `json:"attempt"`
-	PID           int               `json:"pid"`
-	StartTime     string            `json:"start_time"`
-	Interface     string            `json:"interface,omitempty"`
-	Routes        []JournalRoute    `json:"routes,omitempty"`
-	ResolverFiles []JournalResolver `json:"resolver_files,omitempty"`
-	DNSConfigured bool              `json:"dns_configured,omitempty"`
-}
+type Journal = network.Journal
 
 // JournalRoute identifies an owned route precisely enough to remove only the
 // recorded destination, gateway and interface during teardown or crash recovery.
-type JournalRoute struct {
-	CIDR      string `json:"cidr"`
-	Gateway   string `json:"gateway,omitempty"`
-	Interface string `json:"interface"`
-}
+type JournalRoute = network.JournalRoute
 
 // JournalResolver records the exact resolver path and content written by an attempt.
 // Recovery must check ownership markers and content before removing the file.
-type JournalResolver struct {
-	Path    string `json:"path"`
-	Content string `json:"content"`
-}
+type JournalResolver = network.JournalResolver
 
 // writeJournal opens a private directory and persists one validated attempt record.
 // Callers performing repeated writes use writeJournalAt with a pinned handle instead.

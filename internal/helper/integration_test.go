@@ -130,7 +130,7 @@ func startHarness(t *testing.T, authorize Authorizer, configure ...func(*Options
 			return nil
 		}
 	}
-	opts := Options{Paths: p, Authorize: authorize, Deadlines: session.Deadlines{Connect: 2 * time.Second, Authenticate: 2 * time.Second, Human: 2 * time.Second, Negotiate: 2 * time.Second, Network: time.Second, Stop: 100 * time.Millisecond}}
+	opts := Options{Paths: p, Authorize: authorize, Network: NoNetwork{}, Deadlines: session.Deadlines{Connect: 2 * time.Second, Authenticate: 2 * time.Second, Human: 2 * time.Second, Negotiate: 2 * time.Second, Network: time.Second, Stop: 100 * time.Millisecond}}
 	for _, apply := range configure {
 		apply(&opts)
 	}

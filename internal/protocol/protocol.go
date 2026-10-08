@@ -80,6 +80,7 @@ type Event struct {
 	Subject     string `json:"subject,omitempty"`
 	Issuer      string `json:"issuer,omitempty"`
 	Line        string `json:"line,omitempty"`
+	Code        Code   `json:"code,omitempty"`
 }
 
 // MarshalJSON emits only the fields defined for this event kind, including empty
@@ -90,6 +91,9 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	case "state":
 		fields["state"] = e.State
 		fields["detail"] = e.Detail
+		if e.Code != "" {
+			fields["code"] = e.Code
+		}
 	case "challenge":
 		fields["challenge_id"] = e.ChallengeID
 		fields["kind"] = e.Kind

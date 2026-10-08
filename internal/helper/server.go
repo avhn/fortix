@@ -16,13 +16,14 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/avhn/fortix/internal/network"
 	"github.com/avhn/fortix/internal/paths"
 	"github.com/avhn/fortix/internal/protocol"
 	"github.com/avhn/fortix/internal/session"
 )
 
 // Options configures helper paths and injectable policy. Zero limits use bounded
-// defaults. Network must honor context cancellation; nil selects a no-op adapter.
+// defaults. Network must honor context cancellation; nil selects owned host networking.
 type Options struct {
 	Paths          paths.Paths
 	Authorize      Authorizer
@@ -85,7 +86,11 @@ func New(opts Options) (*Server, error) {
 		opts.Logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	if opts.Network == nil {
-		opts.Network = NoNetwork{}
+		adapter, err := network.New(network.Options{Paths: opts.Paths})
+		if err != nil {
+			return nil, err
+		}
+		opts.Network = adapter
 	}
 	if opts.IdleTimeout == 0 {
 		opts.IdleTimeout = 5 * time.Minute
