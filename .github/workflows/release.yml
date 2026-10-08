@@ -24,9 +24,13 @@ jobs:
           cache: false
       - name: Validate release configuration
         run: go run github.com/goreleaser/goreleaser/v2@v2.18.2 check
+        env:
+          # GoReleaser itself requires a newer Go than the module; allow the download.
+          GOTOOLCHAIN: auto
       - name: Check source
         run: make check
       - name: Publish release
         run: go run github.com/goreleaser/goreleaser/v2@v2.18.2 release --clean --parallelism 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GOTOOLCHAIN: auto

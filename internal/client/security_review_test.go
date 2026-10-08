@@ -73,6 +73,9 @@ func TestLogsRequireExplicitSubscription(t *testing.T) {
 			if err := protocol.Write(conn, protocol.Result{Type: "result", ID: r.ID, OK: true}); err != nil {
 				t.Error(err)
 			}
+			// Hold the server side open until the client closes, so the result is
+			// never raced by an early pipe close.
+			_ = reader.Read(&r)
 		})
 		if err != nil {
 			t.Fatal(err)

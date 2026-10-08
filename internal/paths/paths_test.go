@@ -30,7 +30,6 @@ func TestResolve(t *testing.T) {
 		want.TrayAutostart = "/home/jane.doe/Library/LaunchAgents/com.github.avhn.fortix.tray.plist"
 	} else {
 		want.ServiceFile = "/etc/systemd/system/fortix-helper.service"
-		want.VPNDir = "/usr/local/libexec/fortix/openfortivpn"
 		want.ControlSocket = "/run/fortix/fortix.sock"
 		want.PinentrySocket = "/run/fortix/private/pinentry.sock"
 		want.Profiles = "/etc/fortix/profiles"
@@ -58,6 +57,10 @@ func TestOverrides(t *testing.T) {
 	all = append(all, p.ControlSocket, p.PinentrySocket, p.Profiles, p.State, p.Logs, p.Pinentry, p.Preferences, p.BinaryDir, p.CLILink, p.ServiceFile, p.ResolverDir, p.VPNDir, p.TrayAutostart)
 	all = append(all, p.OpenFortiVPN...)
 	for _, path := range all {
+		// Only macOS vendors openfortivpn; an unused location stays empty.
+		if path == "" && p.VPNDir == "" {
+			continue
+		}
 		if !strings.HasPrefix(path, root+string(filepath.Separator)) {
 			t.Fatalf("escaped temporary root: %q", path)
 		}
