@@ -1,0 +1,14 @@
+ERROR:  Gateway certificate validation failed, and the certificate digest is not in the local whitelist. If you trust it, rerun with:
+ERROR:      --trusted-cert 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+ERROR:  or add this line to your configuration file:
+ERROR:      trusted-cert = 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+ERROR:  Gateway certificate:
+ERROR:      subject:
+ERROR:          CN=vpn.example.com
+ERROR:          O=Example
+ERROR:      issuer:
+ERROR:          CN=Example CA
+ERROR:      sha256 digest:
+ERROR:          0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+INFO:   Closed connection to gateway.
+INFO:   Could not log out.

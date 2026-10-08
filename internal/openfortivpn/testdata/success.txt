@@ -1,0 +1,7 @@
+INFO:   Connected to gateway.
+INFO:   Authenticated.
+INFO:   Remote gateway has allocated a VPN.
+INFO:   Got addresses: [10.20.0.10], ns [10.20.0.1, 10.20.0.2], ns_suffix [corp.example.com]
+INFO:   Negotiation complete.
+INFO:   Interface ppp0 is UP.
+INFO:   Tunnel is up and running.

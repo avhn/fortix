@@ -1,0 +1,4 @@
+INFO:   Connected to gateway.
+ERROR:  Could not authenticate to gateway. Please check the password, client certificate, etc.
+INFO:   Closed connection to gateway.
+INFO:   Logged out.

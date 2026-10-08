@@ -1,0 +1,4 @@
+INFO:   Connected to gateway.
+INFO:   Authenticated.
+INFO:   Closed connection to gateway.
+INFO:   Logged out.

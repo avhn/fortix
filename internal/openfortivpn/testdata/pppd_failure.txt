@@ -1,0 +1,7 @@
+INFO:   Connected to gateway.
+INFO:   Authenticated.
+INFO:   Remote gateway has allocated a VPN.
+ERROR:  pppd: The PPP negotiation failed, that is, it didn't reach the point where at least one network protocol (e.g. IP) was running.
+INFO:   Terminated pppd.
+INFO:   Closed connection to gateway.
+INFO:   Logged out.
