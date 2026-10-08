@@ -48,7 +48,7 @@ func TestRealHelperTrust(t *testing.T) {
 			t.Fatalf("fixture build: %v: %s", err, output)
 		}
 	}
-	server, err := helper.New(helper.Options{Paths: p, Authorize: func(peer helper.Peer) error {
+	server, err := helper.New(helper.Options{Paths: p, Network: helper.NoNetwork{}, Authorize: func(peer helper.Peer) error {
 		if peer.UID != uint32(os.Geteuid()) {
 			return os.ErrPermission
 		}
