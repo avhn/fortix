@@ -159,7 +159,7 @@ func trustedMode(stat unix.Stat_t, runtime bool) bool {
 	if stat.Gid == 0 {
 		return true
 	}
-	for _, name := range []string{"daemon", "admin", "syslog"} {
+	for _, name := range []string{"daemon", "syslog"} {
 		group, err := user.LookupGroup(name)
 		if err == nil && group.Gid == strconv.FormatUint(uint64(stat.Gid), 10) {
 			return true

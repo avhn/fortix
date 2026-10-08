@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"unicode"
@@ -35,18 +37,34 @@ var errUnsafeOwnership = errors.New("unsafe ownership or permissions")
 
 // trusted checks root ownership and write permissions for a file or directory.
 // Only isolated test roots may bypass ownership, not file type or symlink checks.
+// A directory may be group-writable only by wheel or daemon, as macOS ships
+// /var/run as root:daemon 0775; world-writable and sticky directories never pass.
 func (i *installer) trusted(info os.FileInfo) error {
-	if !i.paths.SkipTrust {
-		stat, ok := info.Sys().(*syscall.Stat_t)
-		if !ok || stat.Uid != 0 || info.Mode().Perm()&0022 != 0 {
-			return fmt.Errorf("%w: %s", errUnsafeOwnership, info.Name())
-		}
+	if i.paths.SkipTrust {
+		return nil
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != 0 || info.Mode().Perm()&0002 != 0 || info.Mode()&os.ModeSticky != 0 {
+		return fmt.Errorf("%w: %s", errUnsafeOwnership, info.Name())
+	}
+	if info.Mode().Perm()&0020 != 0 && (!info.IsDir() || !systemGroup(stat.Gid)) {
+		return fmt.Errorf("%w: %s", errUnsafeOwnership, info.Name())
 	}
 	return nil
 }
 
+// systemGroup reports whether gid is wheel/root or the daemon service group,
+// whose members are system services rather than interactive or admin accounts.
+func systemGroup(gid uint32) bool {
+	if gid == 0 {
+		return true
+	}
+	group, err := user.LookupGroup("daemon")
+	return err == nil && group.Gid == strconv.FormatUint(uint64(gid), 10)
+}
+
 // checkDirectory refuses symlink installation directories and validates every
-// canonical parent up to root. Root-owned /var and /tmp system aliases may resolve
+// canonical parent up to root. Root-owned /etc, /var and /tmp system aliases may resolve
 // to their canonical location, but sticky writable temporary parents remain unsafe.
 func (i *installer) checkDirectory(path string) error {
 	info, err := os.Lstat(path)
@@ -54,7 +72,7 @@ func (i *installer) checkDirectory(path string) error {
 		return err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		if path != "/var" && path != "/tmp" {
+		if path != "/var" && path != "/tmp" && path != "/etc" {
 			return fmt.Errorf("directory is a symlink: %s", path)
 		}
 		stat, ok := info.Sys().(*syscall.Stat_t)
