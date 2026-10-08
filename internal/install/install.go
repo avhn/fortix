@@ -204,6 +204,24 @@ func (i *installer) waitGroupID(ctx context.Context) (int, error) {
 	}
 }
 
+// waitUnloaded polls launchd until the booted-out helper job is gone. bootout
+// returns while the job may still be exiting, and an immediate bootstrap of the
+// same label then fails with an input/output error.
+func (i *installer) waitUnloaded(ctx context.Context) error {
+	const attempts, delay = 100, 100 * time.Millisecond
+	for attempt := 0; attempt < attempts; attempt++ {
+		if _, err := i.options.Runner.Run(ctx, "/bin/launchctl", "print", "system/com.github.avhn.fortix.helper"); err != nil {
+			return ctx.Err()
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+	}
+	return errors.New("helper service did not unload within 10 seconds")
+}
+
 // Install installs trusted, root-owned executable copies and service configuration,
 // then starts the helper. Each file is staged and renamed atomically; failures are
 // returned without starting a service against incomplete files. Existing profiles
@@ -281,6 +299,9 @@ func Install(ctx context.Context, o Options) error {
 			// An existing plist may describe a stopped job. Only unload registered jobs.
 			if _, err := i.options.Runner.Run(ctx, "/bin/launchctl", "print", "system/com.github.avhn.fortix.helper"); err == nil {
 				if err := i.command(ctx, "/bin/launchctl", "bootout", "system/com.github.avhn.fortix.helper"); err != nil {
+					return err
+				}
+				if err := i.waitUnloaded(ctx); err != nil {
 					return err
 				}
 			} else if ctx.Err() != nil {

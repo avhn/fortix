@@ -19,6 +19,8 @@ import (
 type recordingRunner struct {
 	calls [][]string
 	fail  string
+	// unloaded models launchd after bootout: print fails until the next bootstrap.
+	unloaded bool
 }
 
 // Run saves the executable and arguments and returns a deterministic injected error.
@@ -26,6 +28,18 @@ func (r *recordingRunner) Run(_ context.Context, program string, args ...string)
 	r.calls = append(r.calls, append([]string{program}, args...))
 	if strings.Contains(strings.Join(append([]string{program}, args...), " "), r.fail) && r.fail != "" {
 		return "injected diagnostic", errors.New("injected failure")
+	}
+	if program == "/bin/launchctl" && len(args) > 0 {
+		switch args[0] {
+		case "bootout":
+			r.unloaded = true
+		case "bootstrap":
+			r.unloaded = false
+		case "print":
+			if r.unloaded {
+				return "", errors.New("service not loaded")
+			}
+		}
 	}
 	return "", nil
 }

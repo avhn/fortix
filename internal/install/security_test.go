@@ -166,7 +166,7 @@ func TestReinstall(t *testing.T) {
 				if platform == "darwin" {
 					want = [][]string{{"/usr/sbin/dseditgroup", "-o", "edit", "-a", "jane.doe", "-t", "user", "fortix"}, {"/bin/launchctl", "print", "system/com.github.avhn.fortix.helper"}, {"/bin/launchctl", "bootout", "system/com.github.avhn.fortix.helper"}}
 					if !fail {
-						want = append(want, []string{"/bin/launchctl", "bootstrap", "system", p.ServiceFile})
+						want = append(want, []string{"/bin/launchctl", "print", "system/com.github.avhn.fortix.helper"}, []string{"/bin/launchctl", "bootstrap", "system", p.ServiceFile})
 					}
 				} else {
 					want = [][]string{{"/usr/sbin/usermod", "-a", "-G", "fortix", "jane.doe"}, {"/bin/systemctl", "daemon-reload"}, {"/bin/systemctl", "enable", "--now", "fortix-helper.service"}, {"/bin/systemctl", "restart", "fortix-helper.service"}}
