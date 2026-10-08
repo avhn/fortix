@@ -138,6 +138,9 @@ func TestDialFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := Dial(t.Context(), Options{Socket: "/tmp/fortix-test.sock", Dial: func(context.Context, string, string) (net.Conn, error) { return nil, tc.err }})
+			if tc.name == "permission" && !errors.Is(err, os.ErrPermission) {
+				t.Fatal("permission identity lost")
+			}
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatal(err)
 			}

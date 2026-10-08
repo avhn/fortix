@@ -118,7 +118,7 @@ func Dial(ctx context.Context, o Options) (*Client, error) {
 	conn, err := dial(handshake, "unix", socket)
 	if err != nil {
 		if errors.Is(err, os.ErrPermission) {
-			return nil, errors.New(permissionMessage())
+			return nil, fmt.Errorf("%s: %w", permissionMessage(), os.ErrPermission)
 		}
 		if handshake.Err() != nil {
 			return nil, handshake.Err()

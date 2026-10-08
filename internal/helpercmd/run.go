@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/avhn/fortix/internal/helper"
+	"github.com/avhn/fortix/internal/install"
 	"github.com/avhn/fortix/internal/paths"
 	"github.com/avhn/fortix/internal/pinentry"
 )
@@ -35,7 +36,18 @@ func Run(ctx context.Context, argv []string, in io.Reader, out, diagnostics io.W
 			args = args[1:]
 		case "install", "uninstall":
 			// Installation has separate dispatch so service flags cannot alter system setup.
-			return errors.New("helper installation commands are not available")
+			executable, err := os.Executable()
+			if err != nil {
+				return err
+			}
+			opts, err := installationOptions(args, executable, diagnostics)
+			if err != nil {
+				return err
+			}
+			if args[0] == "install" {
+				return install.Install(ctx, opts)
+			}
+			return install.Uninstall(ctx, opts)
 		}
 	}
 	flags := flag.NewFlagSet("fortix-helper", flag.ContinueOnError)

@@ -30,10 +30,7 @@ jobs:
       - name: Test with race detector
         run: make test
       - name: Cross-build supported platforms
-        shell: bash
-        run: |
-          for os in darwin linux; do
-            for arch in amd64 arm64; do
-              GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 go build ./...
-            done
-          done
+        run: make cross-build
+      - name: Build native macOS tray
+        if: runner.os == 'macOS'
+        run: make native-tray

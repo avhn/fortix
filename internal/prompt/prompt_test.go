@@ -109,8 +109,11 @@ func TestLinuxTools(t *testing.T) {
 			if strings.Contains(strings.Join(r.args, " "), "test-password") || r.script != "" {
 				t.Fatal("secret in command")
 			}
-			if got, err := n.Confirm(context.Background(), "title", "literal message"); !got || err != nil {
+			if got, err := n.Confirm(context.Background(), "title", "<span>literal & message</span>"); !got || err != nil {
 				t.Fatalf("confirm %v %v", got, err)
+			}
+			if tool == "zenity" && !reflect.DeepEqual(r.args, []string{"--question", "--title=title", "--no-markup", "--text=<span>literal & message</span>"}) {
+				t.Fatalf("confirmation markup enabled: %q", r.args)
 			}
 		})
 	}

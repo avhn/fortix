@@ -165,7 +165,7 @@ func (n Native) dialog(ctx context.Context, title, message string, password bool
 			args = []string{mode, "--title=" + title}
 			// Older zenity password dialogs do not accept the question's text option.
 			if !password {
-				args = append(args, "--text="+message)
+				args = append(args, "--no-markup", "--text="+message)
 			}
 		} else if path, err := lookup("kdialog"); err == nil {
 			program = path
