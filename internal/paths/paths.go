@@ -37,6 +37,7 @@ type Paths struct {
 	OpenFortiVPN   []string
 	Pinentry       string
 	Preferences    string
+	TrayAutostart  string
 	SkipTrust      bool
 	BinaryDir      string
 	CLILink        string
@@ -100,6 +101,7 @@ func Resolve(o Override) (Paths, error) {
 			p.Pinentry = underRoot(o.RootDir, p.Pinentry)
 		}
 		p.Preferences = underRoot(o.RootDir, p.Preferences)
+		p.TrayAutostart = underRoot(o.RootDir, p.TrayAutostart)
 		for i, candidate := range p.OpenFortiVPN {
 			p.OpenFortiVPN[i] = underRoot(o.RootDir, candidate)
 		}

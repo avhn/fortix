@@ -25,5 +25,6 @@ func platformPaths(_ string, configHome string) (Paths, error) {
 	}
 	p, err := systemPaths("linux")
 	p.Preferences = filepath.Join(configHome, "fortix/config.json")
+	p.TrayAutostart = filepath.Join(configHome, "autostart/fortix-tray.desktop")
 	return p, err
 }
