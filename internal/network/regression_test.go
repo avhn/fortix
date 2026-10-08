@@ -4,6 +4,7 @@ package network
 import (
 	"context"
 	"errors"
+	"net"
 	"net/netip"
 	"reflect"
 	"strings"
@@ -285,5 +286,27 @@ func TestDarwinScopedDefaultIgnored(t *testing.T) {
 	want = []JournalRoute{{"0.0.0.0/0", "link#20", "ppp0"}}
 	if err != nil || !reflect.DeepEqual(routes, want) {
 		t.Fatalf("unscoped tunnel default: %+v %v", routes, err)
+	}
+}
+
+// TestPointToPointSubnet verifies that a PPP link's classful netmask does not
+// claim a whole /8 for conflict checks, while broadcast links keep their subnet.
+func TestPointToPointSubnet(t *testing.T) {
+	addr := func(s string) net.Addr {
+		ip, network, err := net.ParseCIDR(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &net.IPNet{IP: ip, Mask: network.Mask}
+	}
+	got := linkSubnets("ppp0", net.FlagUp|net.FlagPointToPoint, []net.Addr{addr("10.212.118.104/8")})
+	want := []InterfaceSubnet{{"ppp0", netip.MustParsePrefix("10.212.118.104/32")}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ppp subnet: %+v", got)
+	}
+	got = linkSubnets("en0", net.FlagUp|net.FlagBroadcast, []net.Addr{addr("192.168.1.6/24")})
+	want = []InterfaceSubnet{{"en0", netip.MustParsePrefix("192.168.1.0/24")}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("lan subnet: %+v", got)
 	}
 }

@@ -34,14 +34,27 @@ func ConnectedSubnets() ([]InterfaceSubnet, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, address := range addresses {
-			prefix, err := netip.ParsePrefix(address.String())
-			if err == nil && prefix.Addr().Is4() {
-				result = append(result, InterfaceSubnet{link.Name, prefix.Masked()})
-			}
-		}
+		result = append(result, linkSubnets(link.Name, link.Flags, addresses)...)
 	}
 	return result, nil
+}
+
+// linkSubnets converts one interface's addresses into connected IPv4 prefixes.
+// A point-to-point link reaches only its peer, and macOS reports PPP links with a
+// classful mask (10.x as /8), so such links contribute their own address as /32.
+func linkSubnets(name string, flags net.Flags, addresses []net.Addr) []InterfaceSubnet {
+	var result []InterfaceSubnet
+	for _, address := range addresses {
+		prefix, err := netip.ParsePrefix(address.String())
+		if err != nil || !prefix.Addr().Is4() {
+			continue
+		}
+		if flags&net.FlagPointToPoint != 0 {
+			prefix = netip.PrefixFrom(prefix.Addr(), 32)
+		}
+		result = append(result, InterfaceSubnet{name, prefix.Masked()})
+	}
+	return result
 }
 
 // validInterface accepts only the PPP interface names emitted by the VPN parser.
