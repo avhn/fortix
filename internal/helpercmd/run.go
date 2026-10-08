@@ -59,7 +59,7 @@ func Run(ctx context.Context, argv []string, in io.Reader, out, diagnostics io.W
 	if flags.NArg() != 0 {
 		return errors.New("unknown helper command")
 	}
-	override := paths.Override{}
+	override := paths.Override{Service: true}
 	if *root != "" {
 		if os.Geteuid() == 0 {
 			return errors.New("--dev-root is forbidden for root")

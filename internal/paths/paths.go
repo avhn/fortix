@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode"
 )
@@ -23,6 +24,10 @@ type Override struct {
 	HomeDir        string
 	ConfigHome     string
 	SkipTrust      bool
+	// Service resolves only system locations for the root helper. Service
+	// managers start it without HOME or XDG variables, so per-user fields
+	// (Preferences, TrayAutostart) are left empty instead of failing.
+	Service bool
 }
 
 // Paths contains resolved absolute locations and the test-only trust override.
@@ -59,6 +64,9 @@ func Resolve(o Override) (Paths, error) {
 		return Paths{}, errors.New("paths: skipping executable trust requires an isolated root directory")
 	}
 	home := o.HomeDir
+	if o.Service && home == "" {
+		home = "/"
+	}
 	if home == "" {
 		var err error
 		home, err = os.UserHomeDir()
@@ -77,7 +85,13 @@ func Resolve(o Override) (Paths, error) {
 	if !validPath(home) || !validPath(helper) {
 		return Paths{}, errors.New("paths: discovered home and helper locations must be clean absolute paths")
 	}
-	p, err := platformPaths(home, o.ConfigHome)
+	var p Paths
+	var err error
+	if o.Service {
+		p, err = systemPaths(runtime.GOOS)
+	} else {
+		p, err = platformPaths(home, o.ConfigHome)
+	}
 	if err != nil {
 		return Paths{}, err
 	}

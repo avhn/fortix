@@ -122,3 +122,24 @@ func TestAmbientDefaults(t *testing.T) {
 		t.Fatalf("unsafe ambient defaults: %+v", p)
 	}
 }
+
+// TestServiceWithoutHome verifies that the root helper resolves its system paths
+// when started by launchd or systemd without HOME or XDG variables, and that the
+// per-user locations stay empty rather than pointing into an arbitrary directory.
+func TestServiceWithoutHome(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	p, err := Resolve(Override{Service: true, HelperPath: "/usr/local/libexec/fortix/fortix-helper"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.ControlSocket == "" || p.Profiles == "" || p.State == "" || p.Logs == "" {
+		t.Fatalf("missing system paths: %+v", p)
+	}
+	if p.Preferences != "" || p.TrayAutostart != "" {
+		t.Fatalf("per-user paths set for service: %q %q", p.Preferences, p.TrayAutostart)
+	}
+	if p.Pinentry != "/usr/local/libexec/fortix/fortix-pinentry" {
+		t.Fatalf("pinentry = %q", p.Pinentry)
+	}
+}

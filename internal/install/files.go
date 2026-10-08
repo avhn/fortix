@@ -37,9 +37,17 @@ var errUnsafeOwnership = errors.New("unsafe ownership or permissions")
 
 // trusted checks root ownership and write permissions for a file or directory.
 // Only isolated test roots may bypass ownership, not file type or symlink checks.
-// A directory may be group-writable only by wheel or daemon, as macOS ships
-// /var/run as root:daemon 0775; world-writable and sticky directories never pass.
+// World-writable, sticky and group-writable entries are refused; see trustedAt
+// for the single runtime directory exception.
 func (i *installer) trusted(info os.FileInfo) error {
+	return i.trustedAt(info, "")
+}
+
+// trustedAt applies trusted to the entry at canonical path. Group write is
+// accepted only on the system runtime directory that holds the socket
+// directories (macOS ships /var/run as root:daemon 0775), and only for wheel or
+// daemon. Executable, service, profile and resolver paths stay strict.
+func (i *installer) trustedAt(info os.FileInfo, canonical string) error {
 	if i.paths.SkipTrust {
 		return nil
 	}
@@ -47,10 +55,20 @@ func (i *installer) trusted(info os.FileInfo) error {
 	if !ok || stat.Uid != 0 || info.Mode().Perm()&0002 != 0 || info.Mode()&os.ModeSticky != 0 {
 		return fmt.Errorf("%w: %s", errUnsafeOwnership, info.Name())
 	}
-	if info.Mode().Perm()&0020 != 0 && (!info.IsDir() || !systemGroup(stat.Gid)) {
+	if info.Mode().Perm()&0020 != 0 && (!info.IsDir() || !i.runtimeBase(canonical) || !systemGroup(stat.Gid)) {
 		return fmt.Errorf("%w: %s", errUnsafeOwnership, info.Name())
 	}
 	return nil
+}
+
+// runtimeBase reports whether canonical is the resolved parent of the socket
+// directories, for example /private/var/run for /var/run/fortix/fortix.sock.
+func (i *installer) runtimeBase(canonical string) bool {
+	if canonical == "" || i.paths.ControlSocket == "" {
+		return false
+	}
+	base, err := filepath.EvalSymlinks(filepath.Dir(filepath.Dir(i.paths.ControlSocket)))
+	return err == nil && base == canonical
 }
 
 // systemGroup reports whether gid is wheel/root or the daemon service group,
@@ -92,7 +110,7 @@ func (i *installer) checkDirectory(path string) error {
 		if !info.IsDir() {
 			return fmt.Errorf("not a directory: %s", canonical)
 		}
-		if err := i.trusted(info); err != nil {
+		if err := i.trustedAt(info, canonical); err != nil {
 			return err
 		}
 		if canonical == "/" {
