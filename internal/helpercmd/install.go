@@ -32,5 +32,15 @@ func installationOptions(args []string, executable string, diagnostics io.Writer
 	if flags.NArg() != 0 {
 		return install.Options{}, errors.New("unexpected installation arguments")
 	}
+	// Package managers expose binaries through symlinks such as Homebrew's bin/.
+	// Resolve the operator's path once so the installer opens the canonical file
+	// with O_NOFOLLOW; the vendored copy is verified and re-owned regardless.
+	if opts.OpenFortiVPN != "" {
+		resolved, err := filepath.EvalSymlinks(opts.OpenFortiVPN)
+		if err != nil {
+			return install.Options{}, fmt.Errorf("resolve openfortivpn: %w", err)
+		}
+		opts.OpenFortiVPN = resolved
+	}
 	return opts, nil
 }

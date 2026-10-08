@@ -3,6 +3,8 @@ package helpercmd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -17,7 +19,7 @@ func TestInstallationOptions(t *testing.T) {
 		bad    bool
 	}{
 		{name: "install", args: []string{"install"}},
-		{name: "vendor", args: []string{"install", "--openfortivpn", "/tmp/openfortivpn"}, source: "/tmp/openfortivpn"},
+		{name: "vendor missing", args: []string{"install", "--openfortivpn", "/nonexistent/openfortivpn"}, bad: true},
 		{name: "uninstall", args: []string{"uninstall"}},
 		{name: "purge", args: []string{"uninstall", "--purge"}, purge: true},
 		{name: "purge on install", args: []string{"install", "--purge"}, bad: true},
@@ -46,6 +48,36 @@ func TestInstallationOptions(t *testing.T) {
 				t.Fatalf("warning output = %q", diagnostics.String())
 			}
 		})
+	}
+}
+
+// TestInstallationOptionsResolvesSymlink verifies that a package-manager symlink
+// such as Homebrew's bin/openfortivpn is replaced by its canonical target, which
+// the installer then opens without following links.
+func TestInstallationOptionsResolvesSymlink(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "Cellar", "openfortivpn")
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "openfortivpn")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var diagnostics bytes.Buffer
+	opts, err := installationOptions([]string{"install", "--openfortivpn", link}, "/tmp/bin/fortix-helper", &diagnostics)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.OpenFortiVPN != want {
+		t.Fatalf("openfortivpn = %q, want %q", opts.OpenFortiVPN, want)
 	}
 }
 
