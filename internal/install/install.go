@@ -172,7 +172,7 @@ func (i *installer) group(ctx context.Context) error {
 			return err
 		}
 	}
-	gid, err := i.groupID(ctx)
+	gid, err := i.waitGroupID(ctx)
 	if err != nil || gid < 0 {
 		return fmt.Errorf("resolve fortix group: %w", errors.Join(err, errors.New("group ID unavailable")))
 	}
@@ -184,6 +184,24 @@ func (i *installer) group(ctx context.Context) error {
 		return i.command(ctx, "/usr/sbin/usermod", "-a", "-G", "fortix", name)
 	}
 	return nil
+}
+
+// waitGroupID resolves the fortix GID, retrying briefly while the account
+// database is still absent. macOS directory services can answer from a stale
+// cache for a moment after dseditgroup creates a group; other errors fail at once.
+func (i *installer) waitGroupID(ctx context.Context) (int, error) {
+	const attempts, delay = 50, 100 * time.Millisecond
+	for attempt := 1; ; attempt++ {
+		gid, err := i.groupID(ctx)
+		if !errors.Is(err, errGroupAbsent) || attempt == attempts {
+			return gid, err
+		}
+		select {
+		case <-ctx.Done():
+			return 0, ctx.Err()
+		case <-time.After(delay):
+		}
+	}
 }
 
 // Install installs trusted, root-owned executable copies and service configuration,

@@ -234,6 +234,28 @@ func TestGroupCreation(t *testing.T) {
 	}
 }
 
+// TestGroupCreationWaitsForDirectory verifies that a group which the account
+// database reports only after a delay, as macOS directory services can, still
+// resolves instead of failing installation.
+func TestGroupCreationWaitsForDirectory(t *testing.T) {
+	o, _ := testOptions(t, "darwin")
+	o.SudoUser = "root"
+	lookups := 0
+	o.GroupID = func(string) (int, error) {
+		lookups++
+		if lookups < 4 {
+			return 0, errGroupAbsent
+		}
+		return 42, nil
+	}
+	if err := Install(context.Background(), o); err != nil {
+		t.Fatal(err)
+	}
+	if lookups != 4 {
+		t.Fatalf("group lookups: %d", lookups)
+	}
+}
+
 // TestUninstallRefusesReplacement protects unrelated CLI links and installation
 // directories and ensures a service stop failure prevents any filesystem cleanup.
 func TestUninstallRefusesReplacement(t *testing.T) {
