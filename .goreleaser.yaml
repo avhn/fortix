@@ -63,7 +63,7 @@ nfpms:
     homepage: https://github.com/avhn/fortix
     maintainer: fortix maintainers <maintainers@example.com>
     description: FortiGate SSL VPN profile manager with a CLI and desktop tray.
-    license: MIT
+    license: GPL-3.0-or-later
     bindir: /usr/libexec/fortix
     dependencies: [openfortivpn, ppp]
     contents:

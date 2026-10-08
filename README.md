@@ -253,9 +253,14 @@ uninstaller. Remove any tray binary you copied manually.
 ## Development and license
 
 See [CONTRIBUTING](CONTRIBUTING.md) for the local gate and build matrix.
-fortix is MIT licensed; see [LICENSE](LICENSE). openfortivpn is GPL-3.0 and
-runs as a separate program. fortix source does not contain its implementation.
-Redistributing a bundle containing openfortivpn requires its license notices
-and corresponding source or a GPL-compliant source offer, plus compliance with
-the licenses of its bundled libraries. Local vendoring does not change those
-redistribution obligations.
+Copyright (C) 2026 Mert Dede.
+
+fortix is free software: you can redistribute it and/or modify it under the
+terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version (`GPL-3.0-or-later`). It is distributed in the hope that it will be
+useful, but WITHOUT ANY WARRANTY; see [LICENSE](LICENSE) for details.
+
+openfortivpn, which fortix drives as a separate program, is also GPL-3.0
+licensed. Packages that bundle it ship its license, the licenses of its bundled
+libraries, and a pointer to the exact source they were built from.
