@@ -172,8 +172,10 @@ func parseDarwinRoutes(data []byte) ([]JournalRoute, error) {
 		if err != nil {
 			return nil, err
 		}
-		// Neighbor-cache entries are not routes installed by the helper.
-		if strings.Contains(fields[2], "W") || strings.Contains(fields[2], "L") {
+		// Neighbor-cache entries are not routes installed by the helper. Interface-
+		// scoped entries (flag I), such as the default route macOS adds for every
+		// new link, apply only to sockets bound to that interface, not to the table.
+		if strings.ContainsAny(fields[2], "WLI") {
 			continue
 		}
 		result = append(result, JournalRoute{prefix.String(), fields[1], fields[column]})

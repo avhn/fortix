@@ -368,7 +368,7 @@ func (m *Manager) checkPushedRoutes(id, link string, routes []JournalRoute) erro
 	if m.active[id].profile.Routes.Mode == "gateway" {
 		for _, route := range routes {
 			if route.Interface == link && netip.MustParsePrefix(route.CIDR).Bits() <= 1 {
-				return &ConflictError{"gateway mode rejects default and split-default routes on the tunnel; use full mode"}
+				return &ConflictError{fmt.Sprintf("gateway mode rejects default and split-default routes on the tunnel (%s via %s); use full mode", route.CIDR, route.Gateway)}
 			}
 		}
 	}

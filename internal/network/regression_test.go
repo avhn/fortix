@@ -266,3 +266,24 @@ func TestPendingReservationRefresh(t *testing.T) {
 		t.Fatal("release discarded live ownership")
 	}
 }
+
+// TestDarwinScopedDefaultIgnored verifies that the interface-scoped default route
+// macOS adds for every new PPP link is not treated as a full-tunnel default, while
+// an unscoped default through the tunnel still is.
+func TestDarwinScopedDefaultIgnored(t *testing.T) {
+	table := "Destination Gateway Flags Netif Expire\n" +
+		"default 192.168.1.1 UGScg en0\n" +
+		"default 192.168.1.1 UGS1cIg en0\n" +
+		"default link#20 UCSIg ppp0\n" +
+		"10.30.6/24 ppp0 USc ppp0\n"
+	routes, err := parseDarwinRoutes([]byte(table))
+	want := []JournalRoute{{"0.0.0.0/0", "192.168.1.1", "en0"}, {"10.30.6.0/24", "ppp0", "ppp0"}}
+	if err != nil || !reflect.DeepEqual(routes, want) {
+		t.Fatalf("scoped routes: %+v %v", routes, err)
+	}
+	routes, err = parseDarwinRoutes([]byte("Destination Gateway Flags Netif Expire\ndefault link#20 UCSg ppp0\n"))
+	want = []JournalRoute{{"0.0.0.0/0", "link#20", "ppp0"}}
+	if err != nil || !reflect.DeepEqual(routes, want) {
+		t.Fatalf("unscoped tunnel default: %+v %v", routes, err)
+	}
+}
