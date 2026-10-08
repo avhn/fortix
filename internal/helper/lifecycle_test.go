@@ -225,7 +225,9 @@ func (failingCleanup) Teardown(context.Context, Journal) error {
 // TestShutdownCleanupFailure retains the journal and reports unsuccessful teardown
 // after bounded retries. The test explicitly consumes the expected shutdown error.
 func TestShutdownCleanupFailure(t *testing.T) {
-	h := startHarness(t, nil, func(opts *Options) { opts.Network = failingCleanup{}; opts.Deadlines.Network = 10 * time.Millisecond })
+	// The deadline also bounds apply during connect, so it must tolerate a loaded runner;
+	// the injected teardown fails immediately, so shutdown time does not depend on it.
+	h := startHarness(t, nil, func(opts *Options) { opts.Network = failingCleanup{}; opts.Deadlines.Network = 250 * time.Millisecond })
 	c := h.client(t)
 	connectFixture(t, c, "work", "", "fixture-password")
 	h.cancel()
