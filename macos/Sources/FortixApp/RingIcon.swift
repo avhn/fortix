@@ -92,6 +92,7 @@ enum RingRenderer {
 }
 
 /// RingIcon animates only a connecting state and responds live to the accessibility motion preference.
+@MainActor
 struct RingIcon: View {
   /// Status determines shape independently of any display tint.
   let status: AggregateStatus
