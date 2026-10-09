@@ -113,3 +113,189 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "$RELEASE_TAG" release-artifacts/*
+      - name: Verify the final published release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          ARTIFACTS="$(mktemp -d "${RUNNER_TEMP}/fortix-published.XXXXXX")"
+          gh release download "$RELEASE_TAG" --dir "$ARTIFACTS"
+          scripts/verify-release-assets.sh "$RELEASE_TAG" "$ARTIFACTS"
+
+  homebrew:
+    needs: publish
+    if: github.repository == 'avhn/fortix' && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: fortix-homebrew-tap
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download and verify the final release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          ARTIFACTS="$(mktemp -d "${RUNNER_TEMP}/fortix-homebrew-assets.XXXXXX")"
+          gh release download "$RELEASE_TAG" --dir "$ARTIFACTS"
+          scripts/verify-release-assets.sh "$RELEASE_TAG" "$ARTIFACTS"
+          printf 'RELEASE_ARTIFACTS=%s\n' "$ARTIFACTS" >> "$GITHUB_ENV"
+      - name: Render and syntax-check the tap files
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          OUTPUT="${RUNNER_TEMP}/fortix-tap-rendered"
+          scripts/render-homebrew.sh "$RELEASE_TAG" "$RELEASE_ARTIFACTS/checksums.txt" "$OUTPUT"
+          ruby -c "$OUTPUT/Formula/fortix.rb"
+          ruby -c "$OUTPUT/Casks/fortix.rb"
+          printf 'TAP_OUTPUT=%s\n' "$OUTPUT" >> "$GITHUB_ENV"
+      - name: Start the deploy-key SSH agent
+        env:
+          TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+        run: |
+          set +x
+          test -n "$TAP_DEPLOY_KEY"
+          eval "$(ssh-agent -s)"
+          printf '%s\n' "$TAP_DEPLOY_KEY" | ssh-add -
+          printf 'SSH_AUTH_SOCK=%s\nSSH_AGENT_PID=%s\n' "$SSH_AUTH_SOCK" "$SSH_AGENT_PID" >> "$GITHUB_ENV"
+          # Fetch host keys over authenticated HTTPS, not an unauthenticated SSH scan.
+          curl --fail --silent --show-error --max-time 30 https://api.github.com/meta \
+            | jq -er '.ssh_keys[] | "github.com " + .' > "$RUNNER_TEMP/fortix-github-known-hosts"
+      - name: Commit and push the tap update
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=30 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${RUNNER_TEMP}/fortix-github-known-hosts"
+          TAP="${RUNNER_TEMP}/fortix-tap"
+          git clone --depth 1 git@github.com:avhn/homebrew-tap.git "$TAP"
+          mkdir -p "$TAP/Formula" "$TAP/Casks"
+          cp "$TAP_OUTPUT/Formula/fortix.rb" "$TAP/Formula/fortix.rb"
+          cp "$TAP_OUTPUT/Casks/fortix.rb" "$TAP/Casks/fortix.rb"
+          git -C "$TAP" config user.name 'fortix-release[bot]'
+          git -C "$TAP" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$TAP" add Formula/fortix.rb Casks/fortix.rb
+          if ! git -C "$TAP" diff --cached --quiet; then
+            git -C "$TAP" commit -m "fortix ${RELEASE_TAG#v}"
+            git -C "$TAP" push origin HEAD
+          fi
+      - name: Stop the SSH agent
+        if: always()
+        run: |
+          if [[ -n "${SSH_AGENT_PID:-}" ]]; then
+            ssh-agent -k
+          fi
+
+  apt:
+    needs: publish
+    if: github.repository == 'avhn/fortix' && !contains(github.ref_name, '-')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: fortix-apt-repository
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Download and verify the final release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          ARTIFACTS="$(mktemp -d "${RUNNER_TEMP}/fortix-apt-assets.XXXXXX")"
+          gh release download "$RELEASE_TAG" --dir "$ARTIFACTS"
+          scripts/verify-release-assets.sh "$RELEASE_TAG" "$ARTIFACTS"
+          printf 'RELEASE_ARTIFACTS=%s\n' "$ARTIFACTS" >> "$GITHUB_ENV"
+      - name: Prepare apt-ftparchive without privileged installation
+        run: |
+          if ! command -v apt-ftparchive >/dev/null; then
+            DOWNLOAD="$(mktemp -d "${RUNNER_TEMP}/fortix-apt-utils-download.XXXXXX")"
+            TOOLS="$(mktemp -d "${RUNNER_TEMP}/fortix-apt-utils-tools.XXXXXX")"
+            (cd "$DOWNLOAD" && timeout 120 apt-get download apt-utils)
+            PACKAGES=("$DOWNLOAD"/*.deb)
+            test "${#PACKAGES[@]}" -eq 1
+            dpkg-deb -x "${PACKAGES[0]}" "$TOOLS"
+            printf '%s\n' "$TOOLS/usr/bin" >> "$GITHUB_PATH"
+          fi
+      - name: Test signed repository packaging with a throwaway key
+        run: scripts/test-packaging.sh
+      - name: Retain packages, sign indexes and push Pages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APT_SIGNING_KEY: ${{ secrets.APT_SIGNING_KEY }}
+          APT_SIGNING_PASSPHRASE: ${{ secrets.APT_SIGNING_PASSPHRASE }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set +x
+          test -n "$APT_SIGNING_KEY"
+          test -n "$APT_SIGNING_PASSPHRASE"
+          GNUPGHOME="$(mktemp -d "${RUNNER_TEMP}/fortix-apt-keys.XXXXXX")"
+          export GNUPGHOME
+          chmod 0700 "$GNUPGHOME"
+          trap 'gpgconf --kill gpg-agent >/dev/null 2>&1 || true; rm -rf "$GNUPGHOME"' EXIT
+          printf '%s\n' "$APT_SIGNING_KEY" | gpg --batch --import
+          EXPECTED=7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06
+          ACTUAL="$(gpg --batch --with-colons --list-secret-keys | awk -F: '$1 == "sec" { primary = 1; next } primary && $1 == "fpr" { print $10; primary = 0 }')"
+          if [[ "$ACTUAL" != "$EXPECTED" ]]; then
+            printf '%s\n' 'Imported apt signing key fingerprint mismatch.' >&2
+            exit 1
+          fi
+          # HTTP authentication is held in environment configuration, not remote URLs.
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
+          export GIT_CONFIG_VALUE_0
+          PAGES="$(mktemp -d "${RUNNER_TEMP}/fortix-pages.XXXXXX")"
+          git -C "$PAGES" init
+          git -C "$PAGES" remote add origin https://github.com/avhn/fortix.git
+          if git -C "$PAGES" ls-remote --exit-code --heads origin gh-pages > "$RUNNER_TEMP/fortix-pages-ref"; then
+            git -C "$PAGES" fetch --depth 1 origin gh-pages
+            git -C "$PAGES" checkout -b gh-pages FETCH_HEAD
+          else
+            STATUS=$?
+            test "$STATUS" -eq 2
+            git -C "$PAGES" checkout --orphan gh-pages
+          fi
+          # Pages archiving dereferences links, so reject them across retained site content.
+          if [[ -n "$(find "$PAGES" -type l -print -quit)" ]]; then
+            printf '%s\n' 'Retained Pages repository contains a symlink.' >&2
+            exit 1
+          fi
+          DEBS="$(mktemp -d "${RUNNER_TEMP}/fortix-apt-debs.XXXXXX")"
+          cp "$RELEASE_ARTIFACTS"/*.deb "$DEBS/"
+          scripts/build-apt-repo.sh "$DEBS" "$PAGES/apt" "$EXPECTED"
+          touch "$PAGES/.nojekyll"
+          git -C "$PAGES" config user.name 'fortix-release[bot]'
+          git -C "$PAGES" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$PAGES" add apt .nojekyll
+          if ! git -C "$PAGES" diff --cached --quiet; then
+            git -C "$PAGES" commit -m "fortix ${RELEASE_TAG#v} apt repository"
+            git -C "$PAGES" push origin HEAD:gh-pages
+          fi
+          printf 'PAGES_DIRECTORY=%s\n' "$PAGES" >> "$GITHUB_ENV"
+      # GITHUB_TOKEN branch pushes do not trigger a Pages build, so deploy explicitly.
+      - name: Upload the retained Pages repository
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: ${{ env.PAGES_DIRECTORY }}
+          name: fortix-pages-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Deploy the apt repository to Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+        with:
+          artifact_name: fortix-pages-${{ github.run_id }}-${{ github.run_attempt }}

@@ -34,6 +34,8 @@ archives:
     # Linux includes its tray; macOS CLI archives contain only CLI and helper.
     allow_different_binary_count: true
     formats: [tar.gz]
+    # Package-channel templates and the combined manifest rely on these basenames.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE, README.md, THIRD_PARTY_NOTICES.txt]
     builds_info:
       owner: root
@@ -47,6 +49,7 @@ nfpms:
     package_name: fortix
     ids: [fortix, fortix-helper, tray-linux]
     formats: [deb]
+    file_name_template: "{{ .PackageName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     vendor: fortix
     homepage: https://github.com/avhn/fortix
     maintainer: Mert Dede <doganmertdede@gmail.com>
