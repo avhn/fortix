@@ -42,6 +42,9 @@ func Run(ctx context.Context, argv []string, in io.Reader, out, diagnostics io.W
 			if err != nil {
 				return err
 			}
+			if executable, err = canonicalExecutable(executable); err != nil {
+				return err
+			}
 			opts, err := installationOptions(args, executable, diagnostics)
 			if err != nil {
 				return err

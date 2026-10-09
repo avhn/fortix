@@ -11,6 +11,18 @@ import (
 	"github.com/avhn/fortix/internal/install"
 )
 
+// canonicalExecutable resolves the helper's own path when it was started through a
+// package-manager symlink such as Homebrew's bin/fortix-helper. macOS reports the
+// invoked path, while the installer opens its sources with O_NOFOLLOW, so the
+// canonical file (and its sibling CLI) must be named directly.
+func canonicalExecutable(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return "", fmt.Errorf("resolve helper executable: %w", err)
+	}
+	return resolved, nil
+}
+
 // installationOptions parses only installation flags before any privileged work.
 // The CLI source is the sibling of the running helper, or all three sources come
 // from its app bundle's Resources/libexec. Explicit users are resolved by install

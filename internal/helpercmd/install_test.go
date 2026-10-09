@@ -3,6 +3,7 @@ package helpercmd
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -119,4 +120,46 @@ func FuzzInstallationOptions(f *testing.F) {
 		var output bytes.Buffer
 		_, _ = installationOptions(args, "/tmp/bin/fortix-helper", &output)
 	})
+}
+
+// TestCanonicalExecutableFollowsPackageLink mirrors a Homebrew layout: the helper
+// runs through bin/fortix-helper, and installation must name the Cellar files so
+// the no-follow source opens succeed and the CLI sibling is the packaged one.
+func TestCanonicalExecutableFollowsPackageLink(t *testing.T) {
+	dir := t.TempDir()
+	cellar := filepath.Join(dir, "Cellar", "fortix", "0.2.0", "bin")
+	if err := os.MkdirAll(cellar, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"fortix-helper", "fortix"} {
+		if err := os.WriteFile(filepath.Join(cellar, name), nil, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(bin, "fortix-helper")
+	if err := os.Symlink(filepath.Join("..", "Cellar", "fortix", "0.2.0", "bin", "fortix-helper"), link); err != nil {
+		t.Fatal(err)
+	}
+	executable, err := canonicalExecutable(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opts, err := installationOptions([]string{"install"}, executable, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := filepath.EvalSymlinks(cellar)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.Helper != filepath.Join(want, "fortix-helper") || opts.CLI != filepath.Join(want, "fortix") {
+		t.Fatalf("helper %q, cli %q", opts.Helper, opts.CLI)
+	}
+	if _, err := canonicalExecutable(filepath.Join(bin, "missing")); err == nil {
+		t.Fatal("missing executable resolved")
+	}
 }
