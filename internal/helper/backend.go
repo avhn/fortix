@@ -56,7 +56,9 @@ func (a *supervisor) start() error {
 			_ = a.log.Close()
 		}
 		a.log = log
+		a.nativeDiagnostic(log, a.state.Attempt, "connecting to gateway")
 		if err := a.checkNetworkUp(); err != nil {
+			a.nativeDiagnostic(log, a.state.Attempt, "terminal error: "+err.Error())
 			return err
 		}
 		if err := writeJournalAt(a.server.stateDir, a.journal); err != nil {
@@ -91,10 +93,16 @@ func (a *supervisor) start() error {
 		return err
 	}
 	a.tunnel = tunnel
+	nativeAttempt, log := a.profile.Backend == "native", a.log
 	a.children.Add(1)
 	go func() {
 		defer a.children.Done()
+		var outcome backend.Outcome
 		forward := func(observation backend.Event) {
+			if terminal, ok := observation.(backend.Outcome); ok && nativeAttempt {
+				outcome = terminal
+				return
+			}
 			if challenge, ok := observation.(backend.CredentialRequested); ok && challenge.Request.Kind == backend.Password {
 				a.obtainPassword(tunnel, generation, challenge.Request)
 				return
@@ -132,7 +140,13 @@ func (a *supervisor) start() error {
 				input.reply <- reply
 			}
 		}
-		_ = tunnel.Wait()
+		err := tunnel.Wait()
+		if nativeAttempt {
+			if err != nil {
+				a.nativeDiagnostic(log, generation, "terminal error: "+err.Error())
+			}
+			a.send(session.Event{Profile: a.id, Attempt: generation, Kind: session.Output, Observation: nativeOutcome(outcome, err), Jitter: 0.5})
+		}
 	}()
 	return nil
 }

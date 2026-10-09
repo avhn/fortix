@@ -2,6 +2,10 @@ package backend
 
 import "net/netip"
 
+// AuthenticationFailedCode identifies rejected credentials in helper state events.
+// Unsupported second factors are not credential rejection and must not use this code.
+const AuthenticationFailedCode = "AUTHENTICATION_FAILED"
+
 // Event is a sealed, typed observation shared by native and external VPN backends.
 // Observations do not prove OS ownership; the helper separately verifies registered links.
 type Event interface{ vpnEvent() }

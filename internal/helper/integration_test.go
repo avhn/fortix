@@ -389,6 +389,9 @@ func TestAuthenticationFailureDoesNotRetry(t *testing.T) {
 		t.Fatal("duplicate answer accepted")
 	}
 	failed := c.event(t, "state", "work", "failed")
+	if failed.Code != "AUTHENTICATION_FAILED" {
+		t.Fatalf("missing authentication code: %+v", failed)
+	}
 	if failed.Detail != "authentication rejected" {
 		t.Fatalf("wrong failure: %q", failed.Detail)
 	}

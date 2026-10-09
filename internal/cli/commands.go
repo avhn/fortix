@@ -14,6 +14,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/client"
 	"github.com/avhn/fortix/internal/importer"
 	"github.com/avhn/fortix/internal/paths"
@@ -547,7 +548,7 @@ func (r *runner) finishCredential(event protocol.Event) error {
 			return outputErr
 		}
 	}
-	if event.State == "failed" && value.keyring {
+	if event.State == "failed" && event.Code == backend.AuthenticationFailedCode && value.keyring {
 		_, err := fmt.Fprintf(r.errout, "%s: saved password may be incorrect; run fortix password clear %s before retrying\n", event.Profile, event.Profile)
 		return err
 	}

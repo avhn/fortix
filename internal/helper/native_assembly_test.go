@@ -262,6 +262,13 @@ func assemblyBackend(t *testing.T, n *assemblyNetwork, mode string) (backend.Bac
 				}
 				return
 			}
+			if mode == "eof" {
+				conn, _, err := w.(http.Hijacker).Hijack()
+				if err == nil {
+					_ = conn.Close()
+				}
+				return
+			}
 			if mode == "auth" {
 				_, _ = io.WriteString(w, "ret=0")
 				return
@@ -273,10 +280,20 @@ func assemblyBackend(t *testing.T, n *assemblyNetwork, mode string) (backend.Bac
 			w.Header().Set("Set-Cookie", "SVPNCOOKIE=test-token")
 			_, _ = io.WriteString(w, "ret=1")
 		case "/remote/fortisslvpn_xml":
+			if mode == "http" {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = io.WriteString(w, "fixture-private-body")
+				return
+			}
 			_, _ = io.WriteString(w, `<sslvpn><assigned-addr ipv4="10.8.0.99"/><dns ip="10.8.0.55"/><split-tunnel-info><addr ip="10.20.0.0" mask="255.255.0.0"/></split-tunnel-info></sslvpn>`)
 		case "/remote/sslvpn-tunnel":
 			conn, buffer, err := w.(http.Hijacker).Hijack()
 			if err != nil {
+				return
+			}
+			if mode == "ppp" {
+				_ = native.WriteFrame(conn, []byte{0})
+				_ = conn.Close()
 				return
 			}
 			if mode == "negotiation" {
@@ -389,6 +406,15 @@ func TestNativeAssembly(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(h.paths.State, "native.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("journal remains: %v", err)
 	}
+	logs := string(c.success(t, protocol.Request{Op: "logs", Profile: "native", Lines: 500}).Data)
+	for _, milestone := range []string{"connecting to gateway", "authenticated", "allocated", "PPP negotiated with local address", "link configured", "tunnel up", "stopping"} {
+		if !strings.Contains(logs, milestone) {
+			t.Fatalf("missing %q in native logs: %s", milestone, logs)
+		}
+	}
+	if strings.Contains(logs, "test-token") || strings.Contains(logs, "test-password") {
+		t.Fatalf("credential leaked: %s", logs)
+	}
 }
 
 // TestNativeDownPhases verifies cancellation during broker wait, TLS login, PPP,
@@ -433,7 +459,7 @@ func TestNativeDownPhases(t *testing.T) {
 // TestNativeFatalOutcomes verifies actionable trust/MFA/auth and network conflicts
 // without retries or a silent external-backend fallback after credentials are sent.
 func TestNativeFatalOutcomes(t *testing.T) {
-	for _, mode := range []string{"auth", "mfa", "trust", "conflict", "registration"} {
+	for _, mode := range []string{"auth", "mfa", "trust", "conflict", "registration", "eof", "http", "ppp"} {
 		t.Run(mode, func(t *testing.T) {
 			n := &assemblyNetwork{}
 			if mode == "conflict" {
@@ -462,6 +488,24 @@ func TestNativeFatalOutcomes(t *testing.T) {
 			}
 			if mode == "mfa" && !strings.Contains(e.Detail, "second factors") {
 				t.Fatalf("MFA failure not actionable: %q", e.Detail)
+			}
+			if (e.Code == backend.AuthenticationFailedCode) != (mode == "auth") {
+				t.Fatalf("incorrect authentication code for %s: %+v", mode, e)
+			}
+			if mode == "http" && e.Detail != "gateway HTTP status 403" {
+				t.Fatalf("HTTP status missing: %q", e.Detail)
+			}
+			logs := string(c.success(t, protocol.Request{Op: "logs", Profile: "failure", Lines: 500}).Data)
+			if !strings.Contains(logs, "connecting to gateway") || !strings.Contains(logs, "terminal error:") {
+				t.Fatalf("missing native diagnostics: %s", logs)
+			}
+			for _, secret := range []string{"test-token", "fixture-private-body", "test-password"} {
+				if strings.Contains(logs, secret) {
+					t.Fatalf("native logs leaked %q", secret)
+				}
+			}
+			if mode == "eof" && !strings.Contains(logs, "EOF") {
+				t.Fatalf("terminal EOF missing: %s", logs)
 			}
 		})
 	}

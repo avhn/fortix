@@ -211,7 +211,7 @@ func TestUpCredentials(t *testing.T) {
 					if tc.fail {
 						state = "failed"
 					}
-					return nil, []protocol.Event{{Type: "state", Profile: "work", Attempt: 1, State: state, Detail: "authentication result"}}, nil
+					return nil, []protocol.Event{{Type: "state", Profile: "work", Attempt: 1, State: state, Detail: "authentication result", Code: "AUTHENTICATION_FAILED"}}, nil
 				}
 				t.Errorf("unexpected operation %s", req.Op)
 				return nil, nil, &protocol.Error{Code: protocol.Invalid, Message: "unexpected"}

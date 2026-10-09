@@ -378,7 +378,35 @@ func (a *supervisor) reduce(event session.Event) {
 			}
 		}
 	}
+	nativeEvent := a.profile != nil && a.profile.Backend == "native" && event.Profile == a.id && event.Attempt == a.state.Attempt
+	if nativeEvent {
+		if message := nativeMilestone(event.Observation); message != "" {
+			a.nativeDiagnostic(a.log, event.Attempt, message)
+		}
+		if event.Kind == session.NetworkApplied {
+			a.nativeDiagnostic(a.log, event.Attempt, "link configured")
+		}
+		if event.Kind == session.AttemptFailed && event.Detail != "" {
+			a.nativeDiagnostic(a.log, event.Attempt, "terminal error: "+event.Detail)
+		}
+	}
 	next, effects := session.Next(a.state, event)
+	if outcome, ok := event.Observation.(backend.Outcome); nativeEvent && ok && outcome.Detail != "" && (next.Failure == outcome.Failure || outcome.Failure == "" && next.Failure == session.ProcessFailure) && next.CleanupRetries == 0 {
+		next.Detail = outcome.Detail
+		for i := range effects {
+			if effects[i].Kind == session.EmitState {
+				effects[i].Detail = outcome.Detail
+			}
+		}
+	}
+	if nativeEvent && next.Phase != a.state.Phase {
+		switch next.Phase {
+		case session.Connected:
+			a.nativeDiagnostic(a.log, event.Attempt, "tunnel up")
+		case session.Stopping:
+			a.nativeDiagnostic(a.log, event.Attempt, "stopping")
+		}
+	}
 	a.state = next
 	a.publish()
 	a.effects(effects)
@@ -442,6 +470,9 @@ func (a *supervisor) effects(effects []session.Effect) {
 			a.network(e, true)
 		case session.EmitState:
 			code := protocol.Code("")
+			if e.Phase == session.Failed && a.state.Failure == session.AuthFailure && a.state.Detail == "authentication rejected" {
+				code = backend.AuthenticationFailedCode
+			}
 			if e.Phase == session.Failed && a.state.Failure == session.InterfaceFailure {
 				code = protocol.InterfaceMismatch
 			}
@@ -489,6 +520,7 @@ func (a *supervisor) network(effect session.Effect, remove bool) {
 	p := a.profile
 	journal := a.journal
 	tunnel := a.tunnel
+	log := a.log
 	previous := a.networkDone
 	if remove && a.networkCancel != nil {
 		a.networkCancel()
@@ -581,6 +613,9 @@ func (a *supervisor) network(effect session.Effect, remove bool) {
 		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			event.Failure = session.TimeoutFailure
+		}
+		if err != nil && p.Backend == "native" {
+			a.nativeDiagnostic(log, effect.Attempt, "terminal error: "+err.Error())
 		}
 		a.send(event)
 	}()
