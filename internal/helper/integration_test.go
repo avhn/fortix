@@ -200,9 +200,11 @@ func (h *harness) client(t *testing.T) *testClient {
 }
 
 // read consumes one frame with a finite deadline, failing the test on malformed data.
+// The deadline only bounds a hang: shared CI runners under the race detector can take
+// several seconds to deliver a correct frame, so it is well above any expected latency.
 func (c *testClient) read(t *testing.T) wireMessage {
 	t.Helper()
-	if err := c.socket.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+	if err := c.socket.SetReadDeadline(time.Now().Add(15 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	var message wireMessage
