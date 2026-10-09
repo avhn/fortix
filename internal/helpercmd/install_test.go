@@ -19,6 +19,14 @@ func TestInstallationOptions(t *testing.T) {
 		bad    bool
 	}{
 		{name: "install", args: []string{"install"}},
+		{name: "empty user", args: []string{"install", "--user="}, bad: true},
+		{name: "missing user", args: []string{"install", "--user"}, bad: true},
+		{name: "user on uninstall", args: []string{"uninstall", "--user", "jane"}, bad: true},
+		{name: "bundle on uninstall", args: []string{"uninstall", "--app-bundle"}, bad: true},
+		{name: "add without source", args: []string{"install", "--add-openfortivpn"}, bad: true},
+		{name: "add and bundle", args: []string{"install", "--add-openfortivpn", "--app-bundle", "--openfortivpn", "/tmp/source"}, bad: true},
+		{name: "add and user", args: []string{"install", "--add-openfortivpn", "--user", "jane", "--openfortivpn", "/tmp/source"}, bad: true},
+		{name: "add on uninstall", args: []string{"uninstall", "--add-openfortivpn"}, bad: true},
 		{name: "vendor missing", args: []string{"install", "--openfortivpn", "/nonexistent/openfortivpn"}, bad: true},
 		{name: "uninstall", args: []string{"uninstall"}},
 		{name: "purge", args: []string{"uninstall", "--purge"}, purge: true},
@@ -51,6 +59,17 @@ func TestInstallationOptions(t *testing.T) {
 	}
 }
 
+// TestInstallationOptionsAppBundle carries the explicit account and bundle mode
+// from a bundled executable without resolving users or executing source programs.
+func TestInstallationOptionsAppBundle(t *testing.T) {
+	helper := "/Applications/Fortix.app/Contents/Resources/libexec/fortix-helper"
+	var diagnostics bytes.Buffer
+	opts, err := installationOptions([]string{"install", "--app-bundle", "--user", "selected.user"}, helper, &diagnostics)
+	if err != nil || !opts.AppBundle || opts.User != "selected.user" || opts.Helper != helper || opts.OpenFortiVPN != "" {
+		t.Fatalf("app bundle options = %+v, %v", opts, err)
+	}
+}
+
 // TestInstallationOptionsResolvesSymlink verifies that a package-manager symlink
 // such as Homebrew's bin/openfortivpn is replaced by its canonical target, which
 // the installer then opens without following links.
@@ -72,12 +91,18 @@ func TestInstallationOptionsResolvesSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	var diagnostics bytes.Buffer
-	opts, err := installationOptions([]string{"install", "--openfortivpn", link}, "/tmp/bin/fortix-helper", &diagnostics)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if opts.OpenFortiVPN != want {
-		t.Fatalf("openfortivpn = %q, want %q", opts.OpenFortiVPN, want)
+	for _, add := range []bool{false, true} {
+		args := []string{"install", "--openfortivpn", link}
+		if add {
+			args = append(args, "--add-openfortivpn")
+		}
+		opts, err := installationOptions(args, "/tmp/bin/fortix-helper", &diagnostics)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if opts.OpenFortiVPN != want || opts.AddOpenFortiVPN != add {
+			t.Fatalf("openfortivpn options = %+v", opts)
+		}
 	}
 }
 

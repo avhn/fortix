@@ -251,8 +251,9 @@ func (i *installer) copyExclusive(source, target string) (err error) {
 	return out.Chmod(0755)
 }
 
-// binaries stages the CLI and helper together and makes pinentry a hard link to
-// the staged helper. No service is started until all three files are published.
+// binaries stages the CLI and helper together, copying the bundle's pinentry when
+// supplied or otherwise hard-linking helper. No source executable is run, and no
+// service is started until all three root-owned installation files are published.
 func (i *installer) binaries() (err error) {
 	stage, err := i.stage(i.paths.BinaryDir)
 	if err != nil {
@@ -264,7 +265,11 @@ func (i *installer) binaries() (err error) {
 			return err
 		}
 	}
-	if err := os.Link(filepath.Join(stage, "fortix-helper"), filepath.Join(stage, "fortix-pinentry")); err != nil {
+	if i.pinentry != "" {
+		if err := i.copyExclusive(i.pinentry, filepath.Join(stage, "fortix-pinentry")); err != nil {
+			return err
+		}
+	} else if err := os.Link(filepath.Join(stage, "fortix-helper"), filepath.Join(stage, "fortix-pinentry")); err != nil {
 		return err
 	}
 	for _, name := range []string{"fortix-helper", "fortix-pinentry", "fortix"} {

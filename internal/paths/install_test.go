@@ -2,9 +2,34 @@ package paths
 
 import (
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+// TestAppBundleBinaries verifies source derivation accepts spaces and renamed apps
+// while rejecting controls, noncanonical paths, incorrect layouts and executables.
+func TestAppBundleBinaries(t *testing.T) {
+	helper := "/Applications/Fortix Test.app/Contents/Resources/libexec/fortix-helper"
+	got, err := AppBundleBinaries(helper)
+	want := BundledBinaries{Helper: helper, CLI: filepath.Join(filepath.Dir(helper), "fortix"), Pinentry: filepath.Join(filepath.Dir(helper), "fortix-pinentry")}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("bundle sources = %+v, %v", got, err)
+	}
+	for _, invalid := range []string{
+		"Fortix.app/Contents/Resources/libexec/fortix-helper",
+		"/Applications/Fortix.app/Contents/Resources/bin/fortix-helper",
+		"/Applications/Fortix.app/Contents/MacOS/fortix-helper",
+		"/Applications/Fortix/Contents/Resources/libexec/fortix-helper",
+		"/Applications/Fortix.app/Contents/Resources/libexec/fortix-pinentry",
+		"/Applications/Fortix.app/Contents/Resources/libexec/../libexec/fortix-helper",
+		"/Applications/Fortix\n.app/Contents/Resources/libexec/fortix-helper",
+	} {
+		if _, err := AppBundleBinaries(invalid); err == nil {
+			t.Fatalf("accepted bundle path %q", invalid)
+		}
+	}
+}
 
 // TestInstallationPaths checks both machine layouts and relocates every installer
 // target beneath an isolated root without consulting user homes or executables.

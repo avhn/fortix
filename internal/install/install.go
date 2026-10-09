@@ -62,34 +62,45 @@ func (b *diagnosticBuffer) Write(data []byte) (int, error) {
 }
 
 // Options selects source binaries, service platform and filesystem overrides.
-// Helper and CLI are absolute regular source files; OpenFortiVPN is an optional
-// macOS Mach-O binary. Purge removes stored profiles on uninstall. SudoUser defaults
-// to SUDO_USER. Nil hooks use the real effective UID, group database and chown.
+// Helper and CLI are absolute regular source files; AppBundle derives all three
+// sources from Helper in Contents/Resources/libexec, including a separate pinentry.
+// OpenFortiVPN is an optional macOS Mach-O binary. AddOpenFortiVPN vendors only that
+// backend into an existing install without replacing binaries or restarting service.
+// Purge removes stored profiles on uninstall. User explicitly selects a non-root
+// account and overrides SudoUser, which otherwise defaults to SUDO_USER. UserID
+// resolves explicit accounts and defaults to the OS account database. Other nil
+// hooks use the real effective UID, group database and chown.
 // Linux group lookup uses NSS through getent. Warn reports skipped optional CLI
 // links and defaults to stderr; no privileged executable trust check is relaxed.
 // Tests must supply an isolated Paths.RootDir and Paths.SkipTrust before bypassing
 // root ownership verification; EUID alone never disables filesystem verification.
 type Options struct {
-	Helper       string
-	CLI          string
-	OpenFortiVPN string
-	Purge        bool
-	SudoUser     string
-	Platform     string
-	Paths        paths.Override
-	Runner       Runner
-	EUID         func() int
-	GroupID      func(string) (int, error)
-	Chown        func(string, int, int) error
-	Warn         func(string)
+	Helper          string
+	CLI             string
+	AppBundle       bool
+	OpenFortiVPN    string
+	AddOpenFortiVPN bool
+	Purge           bool
+	User            string
+	SudoUser        string
+	Platform        string
+	Paths           paths.Override
+	Runner          Runner
+	EUID            func() int
+	UserID          func(string) (int, error)
+	GroupID         func(string) (int, error)
+	Chown           func(string, int, int) error
+	Warn            func(string)
 }
 
 // installer carries resolved paths and injected privileged operations for one call.
 // gid is resolved after group creation and is never inferred from the invoking user.
+// pinentry is a separate source only for app bundles; ordinary installs link helper.
 type installer struct {
-	options Options
-	paths   paths.Paths
-	gid     int
+	options  Options
+	paths    paths.Paths
+	gid      int
+	pinentry string
 }
 
 // userName limits account names to ordinary local-account syntax. It prevents
@@ -117,7 +128,22 @@ func prepare(o Options) (*installer, error) {
 	if o.Warn == nil {
 		o.Warn = func(message string) { _, _ = fmt.Fprintln(os.Stderr, message) }
 	}
-	if o.SudoUser == "" {
+	if o.User != "" {
+		if !userName.MatchString(o.User) || len(o.User) > 256 || o.User == "root" {
+			return nil, errors.New("--user requires a valid non-root account name")
+		}
+		if o.UserID == nil {
+			o.UserID = lookupUserID
+		}
+		uid, err := o.UserID(o.User)
+		if err != nil {
+			return nil, fmt.Errorf("resolve installation account: %w", err)
+		}
+		if uid <= 0 || uint64(uid) >= 1<<32-1 {
+			return nil, errors.New("--user requires an existing non-root account")
+		}
+		o.SudoUser = o.User
+	} else if o.SudoUser == "" {
 		o.SudoUser = os.Getenv("SUDO_USER")
 	}
 	if o.SudoUser != "" && !userName.MatchString(o.SudoUser) {
@@ -130,7 +156,35 @@ func prepare(o Options) (*installer, error) {
 	if o.OpenFortiVPN != "" && o.Platform != "darwin" {
 		return nil, errors.New("openfortivpn copying is only supported on macOS")
 	}
-	return &installer{options: o, paths: p}, nil
+	if o.AddOpenFortiVPN && (o.OpenFortiVPN == "" || o.AppBundle || o.User != "") {
+		return nil, errors.New("--add-openfortivpn requires --openfortivpn and cannot combine with --app-bundle or --user")
+	}
+	pinentry := ""
+	if o.AppBundle {
+		if o.Platform != "darwin" {
+			return nil, errors.New("app bundle installation is only supported on macOS")
+		}
+		sources, err := paths.AppBundleBinaries(o.Helper)
+		if err != nil {
+			return nil, err
+		}
+		o.Helper, o.CLI, pinentry = sources.Helper, sources.CLI, sources.Pinentry
+	}
+	return &installer{options: o, paths: p, pinentry: pinentry}, nil
+}
+
+// lookupUserID resolves an explicit account using the OS account database and parses
+// its numeric UID. Lookup and malformed-ID errors are returned before enrollment.
+func lookupUserID(name string) (int, error) {
+	account, err := user.Lookup(name)
+	if err != nil {
+		return 0, err
+	}
+	uid, err := strconv.ParseUint(account.Uid, 10, 32)
+	if err != nil || uid >= 1<<32-1 {
+		return 0, errors.New("invalid account UID")
+	}
+	return int(uid), nil
 }
 
 // lookupGroup resolves a local group's numeric GID and reports missing or malformed
@@ -226,12 +280,22 @@ func (i *installer) waitUnloaded(ctx context.Context) error {
 // then starts the helper. Each file is staged and renamed atomically; failures are
 // returned without starting a service against incomplete files. Existing profiles
 // are never replaced. Source validation precedes group creation and filesystem writes.
+// Omitting OpenFortiVPN installs native support only, preserving any existing vendor
+// directory. AddOpenFortiVPN updates that optional backend in an existing install.
 func Install(ctx context.Context, o Options) error {
 	i, err := prepare(o)
 	if err != nil {
 		return err
 	}
-	for _, source := range []string{o.Helper, o.CLI} {
+	if i.options.AddOpenFortiVPN {
+		return i.addOpenFortiVPN(ctx)
+	}
+	o = i.options
+	sources := []string{o.Helper, o.CLI}
+	if i.pinentry != "" {
+		sources = append(sources, i.pinentry)
+	}
+	for _, source := range sources {
 		f, err := openSource(source)
 		if err != nil {
 			return err
@@ -321,6 +385,28 @@ func Install(ctx context.Context, o Options) error {
 		return i.command(ctx, "/bin/systemctl", "restart", "fortix-helper.service")
 	}
 	return nil
+}
+
+// addOpenFortiVPN validates the existing service and all privileged binaries before
+// publishing an optional backend through the same staged rewrite and signing flow.
+// It does not enroll users, replace core binaries, change profiles or restart jobs.
+func (i *installer) addOpenFortiVPN(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if _, err := inspectMachO(i.options.OpenFortiVPN); err != nil {
+		return err
+	}
+	for _, path := range []string{i.paths.ServiceFile, filepath.Join(i.paths.BinaryDir, "fortix-helper"),
+		filepath.Join(i.paths.BinaryDir, "fortix"), i.paths.Pinentry} {
+		if err := i.checkParent(path); err != nil {
+			return fmt.Errorf("existing installation required: %w", err)
+		}
+		if err := i.checkFile(path); err != nil {
+			return fmt.Errorf("existing installation required: %w", err)
+		}
+	}
+	return i.bundle(ctx)
 }
 
 // Uninstall stops and unregisters the helper before removing owned installation

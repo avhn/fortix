@@ -3,6 +3,7 @@ package paths
 import (
 	"errors"
 	"path/filepath"
+	"strings"
 )
 
 // Installation returns machine-only paths for platform, applying the same root and
@@ -40,6 +41,33 @@ func Installation(platform string, o Override) (Paths, error) {
 	p.Pinentry = filepath.Join(p.BinaryDir, "fortix-pinentry")
 	p.SkipTrust = o.SkipTrust
 	return p, nil
+}
+
+// BundledBinaries holds source executables in an application's Resources/libexec.
+// These paths are inputs for copying only, never runtime or service locations.
+type BundledBinaries struct {
+	Helper   string
+	CLI      string
+	Pinentry string
+}
+
+// AppBundleBinaries derives the three bundled sources from an absolute helper path.
+// It performs no I/O and rejects controls, noncanonical paths and layouts other than
+// an .app directory containing Contents/Resources/libexec/fortix-helper. The caller
+// must validate and copy each source into trusted installation locations.
+func AppBundleBinaries(helper string) (BundledBinaries, error) {
+	if !validPath(helper) || filepath.Base(helper) != "fortix-helper" {
+		return BundledBinaries{}, errors.New("paths: invalid bundled helper path")
+	}
+	libexec := filepath.Dir(helper)
+	resources := filepath.Dir(libexec)
+	contents := filepath.Dir(resources)
+	app := filepath.Dir(contents)
+	if filepath.Base(libexec) != "libexec" || filepath.Base(resources) != "Resources" ||
+		filepath.Base(contents) != "Contents" || !strings.HasSuffix(filepath.Base(app), ".app") {
+		return BundledBinaries{}, errors.New("paths: helper must be in an app's Contents/Resources/libexec")
+	}
+	return BundledBinaries{Helper: helper, CLI: filepath.Join(libexec, "fortix"), Pinentry: filepath.Join(libexec, "fortix-pinentry")}, nil
 }
 
 // systemPaths defines machine paths once for both runtime and installation callers.
