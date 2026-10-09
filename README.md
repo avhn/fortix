@@ -32,58 +32,145 @@ flowchart LR
 - Native password-only tunnels without openfortivpn or pppd; optional FortiToken
   push and prompted codes through the openfortivpn backend.
 - Custom IPv4 routes and split DNS, owned-resource cleanup, and helper recovery.
+- Shareable profile files without usernames or passwords, with partial import,
+  merge, and editable route and DNS lists in the app.
 - Explicit certificate confirmation showing SHA-256, subject, and issuer.
 - An arm64 macOS app with a profile editor, import preview, logs, installation,
   aggregate ring status, optional motion, and next-login autostart.
 - A Linux system tray with notifications; the CLI works without a desktop client.
 
-**Status: early development.** Automated tests exercise unprivileged fixtures;
-real-gateway compatibility and clean-machine installation need verification
-before production use. The native backend supports only password gateways,
-not 2FA. There is no Windows, IPsec, SAML/SSO, client-certificate authentication,
-DTLS, or IPv6 tunnel routing. Native PPP does not support PAP/CHAP or compression.
-The schema accepts `totp` and `static` MFA modes, but clients currently prompt
-for their codes; automatic seed/static-secret storage is not implemented.
-The `preserve_lan` field defaults to true but does not yet install additional
-LAN bypass routes. Use custom routing for predictable local-network access.
+**Status: beta.** v0.2 has been used daily against real FortiGate gateways on
+macOS and tested end to end on Debian in a container, with two tunnels up at
+once. The native backend supports only password gateways, not 2FA; use the
+openfortivpn backend for push or codes. There is no Windows, IPsec, SAML/SSO,
+client-certificate authentication, DTLS, or IPv6 tunnel routing. Native PPP
+does not support PAP/CHAP or compression. The schema accepts `totp` and
+`static` MFA modes, but clients currently prompt for their codes; automatic
+seed/static-secret storage is not implemented. The `preserve_lan` field
+defaults to true but does not yet install additional LAN bypass routes. Use
+custom routing for predictable local-network access.
 
 ## Installation
 
-Download the DMG, Debian package, or CLI archive for your OS and architecture
-from [GitHub Releases](https://github.com/avhn/fortix/releases), together with
-that release's `checksums.txt`. Verify the selected file **before** opening,
-extracting, or installing it. See [release verification](docs/release.md#verify-a-download)
-for exact checksum commands and the limits of a checksum from the same source.
-Review the source before granting root access.
+| Platform | Recommended | Alternatives |
+| --- | --- | --- |
+| macOS 13+ on Apple silicon | Homebrew cask (app) | DMG download, Homebrew formula (CLI only) |
+| macOS on Intel | Homebrew formula (CLI) | CLI archive |
+| Debian/Ubuntu amd64 or arm64 | apt repository | `.deb` download, Homebrew formula |
 
-For a CLI archive, keep `fortix` and `fortix-helper` together: the installer
-finds the CLI beside the helper. Extract each download into a new, empty
-directory. For a source build, use the Go version in `go.mod` and build each executable:
+Every channel installs the same binaries. Review the source before granting
+root access: the helper runs as root.
+
+### Homebrew
+
+```sh
+# Menu-bar app (arm64 macOS 13 or later); it installs its own helper
+brew install --cask avhn/tap/fortix
+
+# Or the CLI and helper only (macOS or Linux, amd64 or arm64)
+brew install avhn/tap/fortix
+sudo "$(brew --prefix)/bin/fortix-helper" install
+```
+
+The app is ad hoc signed and not notarized, so Gatekeeper blocks the first
+launch. After deciding to trust this release, either use **System Settings >
+Privacy & Security > Open Anyway**, or clear the quarantine flag for this app
+only:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Fortix.app
+```
+
+Do not disable Gatekeeper globally. Then follow the [macOS app](#macos-app)
+steps from step 4. The formula's `fortix-helper install` copies the binaries
+into root-owned locations and does not run them from the Homebrew prefix.
+
+`brew upgrade` updates the app or CLI, but not the root-owned helper copies.
+Afterwards run the `install` command again, or choose **Install helper...** in
+the app. Reinstalling restarts the helper, which drops connected tunnels, so
+disconnect first.
+
+### Debian and Ubuntu (apt)
+
+The repository at <https://avhn.github.io/fortix/apt> is signed by a dedicated
+key with fingerprint `7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06`. This adds the
+key scoped to that repository only, after checking the fingerprint, and
+installs fortix without the optional 2FA programs:
+
+```sh
+sudo apt-get update && sudo apt-get install --yes ca-certificates curl gnupg
+(
+  set -eu
+  KEYDIR="$(mktemp -d)"; trap 'rm -rf "$KEYDIR"' EXIT
+  curl -fsSL https://avhn.github.io/fortix/apt/fortix-archive-keyring.gpg -o "$KEYDIR/key.gpg"
+  FINGERPRINT="$(gpg --batch --with-colons --show-keys "$KEYDIR/key.gpg" | awk -F: '$1 == "fpr" { print $10; exit }')"
+  test "$FINGERPRINT" = 7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06
+  sudo install -D -m 0644 "$KEYDIR/key.gpg" /etc/apt/keyrings/fortix-archive-keyring.gpg
+  echo 'deb [signed-by=/etc/apt/keyrings/fortix-archive-keyring.gpg] https://avhn.github.io/fortix/apt stable main' \
+    | sudo tee /etc/apt/sources.list.d/fortix.list >/dev/null
+)
+sudo apt-get update
+sudo apt-get install --yes --no-install-recommends fortix
+sudo usermod -aG fortix "$(id -un)"
+```
+
+Log out and back in so the group membership applies. `apt-get upgrade` keeps
+fortix current. Drop `--no-install-recommends` to also pull in `openfortivpn`
+and `ppp` for second-factor gateways. Never work around a signature failure
+with `trusted=yes` or `--allow-unauthenticated`.
+
+The package depends on `iproute2` and needs a systemd host with `/dev/net/tun`.
+It starts `fortix-helper.service` but does not enroll desktop users itself.
+Split DNS needs a working systemd-resolved: `/etc/resolv.conf` must point at
+its stub (`127.0.0.53`) or the host must use `nss-resolve`, otherwise internal
+names will not resolve even though the tunnel is up. Check with
+`resolvectl query <internal-host>`. `dns.mode: none` needs neither.
+
+### Direct downloads
+
+Each [GitHub release](https://github.com/avhn/fortix/releases) carries the
+DMG, `.deb` packages, CLI archives, and `checksums.txt`. Verify a download
+before opening it:
+
+```sh
+shasum -a 256 --check --ignore-missing checksums.txt   # macOS
+sha256sum --check --ignore-missing checksums.txt       # Linux
+```
+
+A checksum from the same page only detects corruption, not a compromised
+release; see [release verification](docs/release.md#verify-a-download). Install
+a `.deb` with `sudo apt install --no-install-recommends ./fortix_*.deb`, then add
+yourself to the `fortix` group as above. From a CLI archive, keep `fortix` and
+`fortix-helper` together and run `sudo ./fortix-helper install`; it creates the
+`fortix` group and enrolls `SUDO_USER` (or `--user NAME`). Do not mix the
+archive installer with the Debian package on one machine.
+
+### From source
+
+Use the Go version in `go.mod`:
 
 ```sh
 GOMAXPROCS=2 GOFLAGS=-p=2 go build -o dist/fortix ./cmd/fortix
 GOMAXPROCS=2 GOFLAGS=-p=2 go build -o dist/fortix-helper ./cmd/fortix-helper
-GOMAXPROCS=2 GOFLAGS=-p=2 go build -o dist/fortix-tray ./cmd/fortix-tray
+sudo ./dist/fortix-helper install
 ```
 
-Build the macOS tray natively with cgo and Xcode Command Line Tools installed.
-Linux tray builds do not require cgo. The helper installs its own root-owned
-binaries under `/usr/local/libexec/fortix` and links the CLI into
-`/usr/local/bin`; it does not install the tray. Keep the tray at a stable,
-user-owned location before enabling autostart.
+`scripts/build-macos-app.sh` builds the app bundle and DMG; see
+[CONTRIBUTING](CONTRIBUTING.md) for the full build matrix and the legacy tray.
 
 ### macOS app
 
 The DMG requires macOS 13 or later on Apple silicon (arm64). No Intel DMG is
 provided; Intel users can use the CLI archive instead.
 
-1. Verify the DMG, open it, and drag **Fortix.app** to **Applications**.
-2. Eject the disk image and launch `/Applications/Fortix.app`. Do not install
+1. Install with the cask, or verify the DMG, open it, and drag **Fortix.app**
+   to **Applications**.
+2. Eject any disk image and launch `/Applications/Fortix.app`. Do not install
    the helper from the mounted DMG or a build directory.
 3. If Gatekeeper blocks this ad hoc signed, non-notarized app, review the
    download's provenance first. If you accept it, use **System Settings >
-   Privacy & Security > Open Anyway**, then confirm opening it. Do not disable
-   Gatekeeper globally or bypass your organization's policy.
+   Privacy & Security > Open Anyway**, or the `xattr` command above. Do not
+   disable Gatekeeper globally or bypass your organization's policy.
 4. Open **Settings and installation** and choose **Install helper...**. One
    administrator prompt copies the bundled CLI, helper, and pinentry from
    `Contents/Resources/libexec` into root-owned locations, creates the `fortix`
@@ -99,20 +186,10 @@ prompt and copies the optional backend without restarting the helper. Select
 `openfortivpn`, or **Automatic** with a non-`none` MFA mode, in the profile editor.
 The app does not bundle openfortivpn, and adding it does not enable native 2FA.
 
-### macOS CLI installation
+### Second-factor support (openfortivpn)
 
-For a verified CLI archive or source build, native support installs without
-openfortivpn:
-
-```sh
-sudo ./fortix-helper install
-```
-
-The installer loads `com.github.avhn.fortix.helper`, creates the `fortix` group,
-and enrolls `SUDO_USER`. If needed, `--user` explicitly selects an existing
-non-root desktop account. Log out and back in to refresh group membership.
-
-To add the optional MFA backend to an existing installation:
+Native profiles need no other VPN program. For push or code-based 2FA on
+macOS, install openfortivpn and hand a root-owned copy to the helper:
 
 ```sh
 brew install openfortivpn
@@ -120,44 +197,13 @@ sudo /usr/local/libexec/fortix/fortix-helper install --add-openfortivpn \
   --openfortivpn "$(brew --prefix)/bin/openfortivpn"
 ```
 
-The installer copies openfortivpn and its non-system dylibs to
-`/Library/Application Support/fortix/libexec`, rewrites load paths with
-`install_name_tool`, and signs the copies ad hoc. A root helper never executes
-a user-writable package-manager binary or loads its user-writable libraries
-directly. CLI archives are not Developer ID signed or notarized either.
+The installer copies openfortivpn and its non-system libraries to
+`/Library/Application Support/fortix/libexec` and signs the copies ad hoc, so
+the root helper never runs a user-writable binary. On Debian, install the
+`openfortivpn` and `ppp` packages. Then select `openfortivpn`, or leave the
+backend unset with a non-`none` MFA mode, in the profile.
 
-### Debian/Ubuntu
-
-Use a systemd host with `iproute2` and `/dev/net/tun` for native tunnels.
-After checksum verification, install the `.deb` without its optional MFA
-recommendations. In a directory containing only your selected package:
-
-```sh
-sudo apt install --no-install-recommends ./fortix_*.deb
-sudo usermod -aG fortix "$(id -un)"
-```
-
-Run these as the intended desktop account with sudo, not from a root login.
-The package depends on `iproute2` and only **recommends** `openfortivpn` and
-`ppp`. Ordinary apt installs may include recommendations; the command above
-avoids requiring those programs for password-only native profiles. The package
-starts `fortix-helper.service` but does not enroll desktop users automatically.
-Log out and back in after group enrollment. Packaged binaries live in
-`/usr/libexec/fortix`; do not mix package ownership with the archive installer.
-
-For an archive/source installation instead:
-
-```sh
-sudo apt install iproute2
-sudo ./fortix-helper install
-```
-
-This creates the group, enrolls `SUDO_USER` (or an explicit `--user`), and
-enables the helper service. Native profiles do not use pppd. Install
-`openfortivpn` and `ppp` separately if you select the openfortivpn backend.
-For split DNS, configure a working systemd-resolved installation with
-`resolvectl`; it is not a package dependency and there is no automatic
-resolvconf fallback. `dns.mode: none` needs no managed split DNS.
+### Linux tray
 
 The Linux tray uses StatusNotifierItem over D-Bus. KDE and XFCE usually expose
 it directly; GNOME requires an AppIndicator-compatible extension. Without a
@@ -214,6 +260,41 @@ is no silent backend fallback if an executable is missing or authentication
 fails. An unexpected second-factor challenge on native fails with a message to
 use openfortivpn. Disconnect, edit the inactive profile, and reconnect explicitly.
 
+## Sharing profiles
+
+A colleague who already uses fortix can export a profile and send you the file.
+The export carries the gateway, routes, split DNS domains, and backend, but
+never a username or password, so everyone signs in with their own account.
+
+```sh
+fortix profile export work -o work.fortix.json      # sender
+fortix profile import work.fortix.json --username YOUR_VPN_USERNAME
+fortix up work --save                               # asks for your password once
+```
+
+On a terminal, import asks for anything the file lacks. In the macOS app,
+**Import profile...** opens each profile in the editor with the file's values
+filled in; enter your username, add or remove route and DNS rows with **+** and
+**-**, and save. **Export...** writes the selected profile, or all of them.
+
+To extend a profile later, for example when the VPN starts serving another
+internal domain, add the domain or prefix to the profile's lists (in the app's
+editor, or in a file merged with `--merge`). A wildcard such as
+`*.example-internal.com` is accepted and stored as the domain itself, which
+already covers every name under it:
+
+```sh
+fortix profile import extra.fortix.json --merge work
+```
+
+A merge keeps your ID and username and replaces only the fields present in the
+file; a list in the file replaces that list as a whole. If a merge would change
+the gateway, fortix shows the change and asks first, because your password goes
+to whichever gateway the profile names. Files containing anything that looks
+like a password, token, or cookie are rejected outright. A certificate
+fingerprint inside a file is shown but never trusted automatically; see
+[sharing profiles](docs/profiles.md) for the format.
+
 ## CLI reference
 
 | Command | Behavior |
@@ -239,9 +320,10 @@ Shared import accepts `-` for stdin and imports every profile in a file.
 already exist. Missing fields are prompted only on a terminal; otherwise supply
 complete shared configuration and `--username`. Import never asks for a password.
 Run `fortix up <id> --save` afterward to connect and optionally save it to the keychain.
-Shared pins are displayed and require confirmation, or `--yes` noninteractively.
-Verify the sender and pin independently. The helper ignores submitted pins on
-import, just as with `profile add`; use `fortix trust <id>` to establish trust.
+A merge that changes the gateway needs confirmation, or `--yes` noninteractively.
+A certificate fingerprint in the file is printed as unverified information and
+never saved; use `fortix trust <id>` after confirming the fingerprint with your
+administrator.
 
 Use `--help` for command-specific flags. `--yes` skips the confirmation prompt;
 it does not bypass the helper's captured-digest check. Passwords are saved only
@@ -254,8 +336,9 @@ bypass, so clear the saved password if it should not be used again.
 
 ## macOS app, tray, and preferences
 
-The macOS app's **Profiles** window offers new/edit/delete, read-only import
-preview, connect/disconnect, and **Forget password**. **Logs** displays a bounded
+The macOS app's **Profiles** window offers new/edit/delete, profile import and
+export, a read-only FortiClient import preview, connect/disconnect, and
+**Forget password**. **Logs** displays a bounded
 redacted tail. **Settings and installation** controls icon motion and
 **Launch Fortix at login** through the OS login-item service; approve it in
 System Settings when requested. Do not enable both app and legacy-tray autostart.
