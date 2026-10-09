@@ -7,7 +7,7 @@ import XCTest
 /// AppTests exercise presentation, challenge binding, secret retention, and explicit installer commands.
 final class AppTests: XCTestCase {
   /// TestRingGeometry checks the distinct monochrome states against the CLI's design-grid rules.
-  func testRingGeometry() {
+  @MainActor func testRingGeometry() {
     XCTAssertEqual(RingRenderer.coverage(x: 0, y: 0, status: .notConnected, frame: 0), 0)
     XCTAssertEqual(RingRenderer.coverage(x: 0, y: 0, status: .connected, frame: 0), 1)
     XCTAssertEqual(RingRenderer.coverage(x: -2, y: 0, status: .partial, frame: 0), 1)

@@ -46,8 +46,20 @@ enum RingRenderer {
     }
   }
 
-  /// Image samples a forty-four-pixel monochrome glyph for crisp retina template rendering.
-  static func image(status: AggregateStatus, frame: Int) -> NSImage {
+  /// Cache holds one image per status and frame, so each glyph is rendered only once.
+  @MainActor private static var cache: [String: NSImage] = [:]
+
+  /// Image returns the cached glyph for a status and frame, rendering it once on first use.
+  @MainActor static func image(status: AggregateStatus, frame: Int) -> NSImage {
+    let key = "\(status)-\(frame)"
+    if let cached = cache[key] { return cached }
+    let image = render(status: status, frame: frame)
+    cache[key] = image
+    return image
+  }
+
+  /// Render samples a forty-four-pixel monochrome glyph for crisp retina template rendering.
+  static func render(status: AggregateStatus, frame: Int) -> NSImage {
     let size = 44
     let bitmap = NSBitmapImageRep(
       bitmapDataPlanes: nil, pixelsWide: size, pixelsHigh: size, bitsPerSample: 8,
@@ -104,10 +116,11 @@ struct RingIcon: View {
   }
 
   /// Glyph applies native template tinting and a textual accessibility label to a single discrete frame.
+  /// The image already carries its 22-point size and is not resized here: a resizable, framed
+  /// label made AppKit refit the status item on every update, and that layout pass scheduled
+  /// the next SwiftUI update, spinning the main thread and freezing the app.
   private func glyph(frame: Int) -> some View {
     Image(nsImage: RingRenderer.image(status: status, frame: frame))
-      .resizable()
-      .frame(width: AppTheme.iconSize, height: AppTheme.iconSize)
       .accessibilityLabel(label)
   }
 }
