@@ -286,6 +286,18 @@ func validText(text string, min, max int) bool {
 	return utf8.ValidString(text) && count >= min && count <= max && !strings.ContainsFunc(text, unicode.IsControl)
 }
 
+// NormalizeDomain returns domain in lowercase with a single leading wildcard label removed.
+// Multiple wildcards remain invalid rather than being stripped by repeated normalization.
+// It does not trim whitespace or repair labels; callers must validate the result before
+// storing it. DNS import and interactive entry can share this idempotent normalization.
+func NormalizeDomain(domain string) string {
+	domain = strings.ToLower(domain)
+	if strings.HasPrefix(domain, "*.") && !strings.Contains(domain[2:], "*") {
+		return domain[2:]
+	}
+	return domain
+}
+
 // validDNSName checks an ASCII DNS name's total length and LDH label boundaries.
 // It returns false for schemes, ports, paths, empty labels, trailing dots, or wildcards.
 func validDNSName(host string) bool {
