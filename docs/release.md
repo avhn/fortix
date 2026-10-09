@@ -288,6 +288,6 @@ infer those outcomes from fixture-only checks.
 - No native SAML/SSO, client-certificate authentication, DTLS, PAP/CHAP,
   compression, or IPv6 tunnel routing. There is no Linux profile-editor window;
   the Linux tray and CLI remain available.
-- No kill switch or universal DNS/leak-prevention guarantee. `preserve_lan` does
-  not implement bypass routes, and full route mode does not turn split DNS into
-  global DNS. See [profiles](profiles.md) and [security](security.md).
+- No kill switch or universal DNS/leak-prevention guarantee. `preserve_lan`
+  applies to the native backend only, and full route mode does not turn split DNS
+  into global DNS. See [profiles](profiles.md) and [security](security.md).

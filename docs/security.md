@@ -227,8 +227,9 @@ loss, cleanup failure, missing targets, or a competing start cannot prove a clea
 host. Quitting a desktop client does not stop helper-owned tunnels, and a clean
 local stop does not prove that best-effort remote logout succeeded.
 
-IPv6 routing is not handled. `preserve_lan` is currently configuration intent,
-not an implemented bypass-route mechanism. There is no kill switch. fortix
+IPv6 routing is not handled. `preserve_lan` narrows gateway-pushed native routes
+around physical local networks; it never removes routes another VPN owns and adds
+no routes of its own. There is no kill switch. fortix
 cannot guarantee that every application sends DNS or traffic through the VPN,
 or that another network manager will not change routes while a tunnel runs.
 Authentication rejection and certificate changes do not trigger automatic

@@ -602,6 +602,11 @@ func (a *supervisor) network(effect session.Effect, remove bool) {
 				if err == nil {
 					err = a.server.opts.Network.Apply(ctx, p, effect, &journal, persist)
 				}
+				if err == nil && p.Backend == "native" && p.Routes.Mode != "custom" {
+					if message := carvedRoutesMessage(effect.PushedPrefixes, journal, effect.Interface); message != "" {
+						a.nativeDiagnostic(log, effect.Attempt, message)
+					}
+				}
 			}
 			if err != nil {
 				event.Kind = session.AttemptFailed

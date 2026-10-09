@@ -48,6 +48,91 @@ func negotiatedPrefixes(p *profile.Profile, effect session.Effect) ([]netip.Pref
 	return slices.Clone(effect.PushedPrefixes), nil
 }
 
+// preserveLAN reports the profile's LAN policy; omission keeps the documented default.
+func preserveLAN(p *profile.Profile) bool {
+	return p.Routes.PreserveLAN == nil || *p.Routes.PreserveLAN
+}
+
+// maxCarvedRoutes bounds the routes produced by carving, so a hostile push of many
+// broad prefixes cannot expand into an unbounded number of kernel routes.
+const maxCarvedRoutes = 1024
+
+// carveLocalNetworks removes the networks of physical interfaces (Wi-Fi, Ethernet,
+// local bridges) from gateway-selected routes, so the gateway cannot claim the LAN
+// the client sits on. A route inside a local network is dropped; a broader route is
+// split into the smallest prefixes that cover the rest. Default halves are left
+// alone because the connected LAN route is already more specific. Tunnel
+// interfaces are not carved: a clash with another VPN stays a conflict.
+func carveLocalNetworks(prefixes []netip.Prefix, subnets []InterfaceSubnet) ([]netip.Prefix, error) {
+	result := make([]netip.Prefix, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		parts := []netip.Prefix{prefix}
+		if prefix.Bits() > 1 {
+			for _, subnet := range subnets {
+				if !physicalInterface(subnet.Interface) || !subnet.Prefix.IsValid() || !subnet.Prefix.Addr().Is4() {
+					continue
+				}
+				local := subnet.Prefix.Masked()
+				next := make([]netip.Prefix, 0, len(parts)+1)
+				for _, part := range parts {
+					next = append(next, subtractPrefix(part, local)...)
+				}
+				parts = next
+			}
+		}
+		for _, part := range parts {
+			if !slices.Contains(result, part) {
+				result = append(result, part)
+			}
+		}
+		if len(result) > maxCarvedRoutes {
+			return nil, errors.New("too many routes after excluding local networks")
+		}
+	}
+	// Interface enumeration order can differ between checks; a stable order keeps
+	// revalidation within one attempt comparing equal lists.
+	slices.SortFunc(result, func(a, b netip.Prefix) int {
+		if c := a.Addr().Compare(b.Addr()); c != 0 {
+			return c
+		}
+		return a.Bits() - b.Bits()
+	})
+	return result, nil
+}
+
+// subtractPrefix returns prefix minus local as disjoint prefixes, largest first.
+// Disjoint inputs return prefix unchanged and a covering local returns nothing.
+func subtractPrefix(prefix, local netip.Prefix) []netip.Prefix {
+	if !prefix.Overlaps(local) {
+		return []netip.Prefix{prefix}
+	}
+	if local.Bits() <= prefix.Bits() {
+		return nil
+	}
+	var result []netip.Prefix
+	// Walk down from prefix toward local, keeping the sibling half at each level.
+	current := prefix
+	for current.Bits() < local.Bits() {
+		bits := current.Bits() + 1
+		lower := netip.PrefixFrom(current.Addr(), bits)
+		upper := netip.PrefixFrom(nextAddr(lower), bits)
+		if lower.Contains(local.Addr()) {
+			result, current = append(result, upper), lower
+		} else {
+			result, current = append(result, lower), upper
+		}
+	}
+	return result
+}
+
+// nextAddr returns the first IPv4 address after prefix's range.
+func nextAddr(prefix netip.Prefix) netip.Addr {
+	a := prefix.Addr().As4()
+	value := uint32(a[0])<<24 | uint32(a[1])<<16 | uint32(a[2])<<8 | uint32(a[3])
+	value += uint32(1) << (32 - prefix.Bits())
+	return netip.AddrFrom4([4]byte{byte(value >> 24), byte(value >> 16), byte(value >> 8), byte(value)})
+}
+
 // usesNativeDefaults identifies full routing with absent splits or pushed defaults.
 // Defaults are normalized to two owned /1 routes rather than replacing the LAN default.
 func usesNativeDefaults(p *profile.Profile, effect session.Effect) bool {
@@ -132,51 +217,58 @@ func (m *Manager) connectedNativeRoute(current tunnel, route JournalRoute) bool 
 // cover Darwin's verified local /32 without claiming the kernel-connected route.
 // Reservations remain until successful teardown, including later transaction failures.
 func (m *Manager) ReserveNegotiated(ctx context.Context, p *profile.Profile, effect session.Effect) error {
-	return m.reserveNegotiated(ctx, p, effect, netip.Addr{})
+	_, err := m.reserveNegotiated(ctx, p, effect, netip.Addr{})
+	return err
 }
 
-// reserveNegotiated applies reservation checks with an optional recorded TLS peer.
+// reserveNegotiated applies reservation checks with an optional recorded TLS peer and
+// returns the reserved destinations, which are the only ones Apply may install.
 // Only Apply supplies that verified journal address under the transaction gate. A
 // broader route may cover its physical host exception without claiming it; acquisition
 // separately validates that path before mutation. Unknown peers grant no exemption.
-func (m *Manager) reserveNegotiated(ctx context.Context, p *profile.Profile, effect session.Effect, gateway netip.Addr) error {
+func (m *Manager) reserveNegotiated(ctx context.Context, p *profile.Profile, effect session.Effect, gateway netip.Addr) ([]netip.Prefix, error) {
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	if p == nil || p.Validate() != nil || p.Backend != "native" || effect.Profile != p.ID {
-		return errors.New("invalid native route reservation")
+		return nil, errors.New("invalid native route reservation")
 	}
 	m.mu.Lock()
 	current := m.active[p.ID]
 	m.mu.Unlock()
 	if !current.configured {
-		return &InterfaceError{}
+		return nil, &InterfaceError{}
 	}
 	if current.profile.Backend != p.Backend || current.profile.Routes.Mode != p.Routes.Mode ||
 		!slices.Equal(current.profile.Routes.Include, p.Routes.Include) || current.profile.DNS.Mode != p.DNS.Mode ||
 		!slices.Equal(current.profile.DNS.Domains, p.DNS.Domains) {
-		return errors.New("native network policy changed within an attempt")
+		return nil, errors.New("native network policy changed within an attempt")
 	}
 	j := Journal{Profile: p.ID, Attempt: current.attempt, Backend: "native", Interface: current.link, Link: &current.identity, LocalIP: current.localIP.String()}
 	if err := m.registeredLink(effect, j, true); err != nil {
-		return err
+		return nil, err
 	}
 	prefixes, err := negotiatedPrefixes(p, effect)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	subnets, err := m.subnets()
 	if err != nil {
-		return errors.New("connected interface discovery failed")
+		return nil, errors.New("connected interface discovery failed")
+	}
+	if p.Routes.Mode != "custom" && preserveLAN(p) {
+		if prefixes, err = carveLocalNetworks(prefixes, subnets); err != nil {
+			return nil, err
+		}
 	}
 	routes, err := m.reservationRoutes(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, prefix := range prefixes {
 		for _, subnet := range subnets {
 			if subnet.Interface != effect.Interface && prefix.Bits() > 1 && prefix.Overlaps(subnet.Prefix) {
-				return &ConflictError{"negotiated route overlaps a connected interface"}
+				return nil, &ConflictError{fmt.Sprintf("negotiated route %s overlaps %s on %s", prefix, subnet.Prefix, subnet.Interface)}
 			}
 		}
 		for _, route := range routes {
@@ -196,45 +288,45 @@ func (m *Manager) reserveNegotiated(ctx context.Context, p *profile.Profile, eff
 			}
 			if other.Bits() == 0 {
 				if validInterface(route.Interface) && prefix.Bits() <= 1 {
-					return &ConflictError{"another tunnel default route is active"}
+					return nil, &ConflictError{"another tunnel default route is active"}
 				}
 				continue
 			}
 			if nativeOverlap(prefix, other) || prefix == other {
-				return &ConflictError{fmt.Sprintf("negotiated route %s overlaps existing route %s", prefix, other)}
+				return nil, &ConflictError{fmt.Sprintf("negotiated route %s overlaps existing route %s", prefix, other)}
 			}
 		}
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	latest := m.active[p.ID]
 	if latest.attempt != effect.Attempt || latest.identity != effect.Link {
-		return &InterfaceError{}
+		return nil, &InterfaceError{}
 	}
 	for id, other := range m.active {
 		if id == p.ID {
 			continue
 		}
 		if p.Routes.Mode == "full" && other.profile.Routes.Mode == "full" {
-			return &ConflictError{"another full tunnel is active"}
+			return nil, &ConflictError{"another full tunnel is active"}
 		}
 		for _, prefix := range prefixes {
 			for _, reserved := range reservationPrefixes(other) {
 				if nativeOverlap(prefix, reserved) {
-					return &ConflictError{"negotiated route overlaps another active reservation"}
+					return nil, &ConflictError{fmt.Sprintf("negotiated route %s overlaps active profile %s", prefix, id)}
 				}
 			}
 		}
 	}
 	if latest.negotiated && !slices.Equal(latest.prefixes, prefixes) {
-		return errors.New("negotiated routes changed within an attempt")
+		return nil, errors.New("negotiated routes changed within an attempt")
 	}
 	latest.prefixes, latest.negotiated = slices.Clone(prefixes), true
 	m.active[p.ID] = latest
-	return nil
+	return slices.Clone(prefixes), nil
 }
 
 // addOwnedRoute journals an add intent and then verifies its concrete kernel identity.
@@ -296,10 +388,7 @@ func (m *Manager) addOwnedRoute(ctx context.Context, route JournalRoute, j *Jour
 // gate; every installed prefix has a matching pre-mutation reservation.
 func (m *Manager) applyNative(ctx context.Context, p *profile.Profile, effect session.Effect, j *Journal, persist func(Journal) error) error {
 	gateway, _ := netip.ParseAddr(j.GatewayIP)
-	if err := m.reserveNegotiated(ctx, p, effect, gateway); err != nil {
-		return err
-	}
-	prefixes, err := negotiatedPrefixes(p, effect)
+	prefixes, err := m.reserveNegotiated(ctx, p, effect, gateway)
 	if err != nil {
 		return err
 	}

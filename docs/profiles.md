@@ -129,10 +129,19 @@ including an existing-route clash, prevent reporting that attempt as connected.
 Do not assume these checks eliminate every transient change or a race with
 another network manager.
 
-`preserve_lan` is accepted and defaults to true but does not add LAN bypass
-routes. More-specific physical routes can remain effective under the native
-`/1` fallback; this is route precedence, not an implemented guarantee from the
-field. Custom routing is the most predictable option for local-network access.
+With the native backend, `preserve_lan` (default true) removes the networks of
+physical interfaces (Wi-Fi, Ethernet, local bridges) from the routes a gateway
+pushes in `gateway` and `full` mode. A pushed route inside a local network is
+skipped; a broader one is split into the smallest prefixes that cover the rest,
+for example `192.168.0.0/22` around a `192.168.1.0/24` LAN becomes
+`192.168.0.0/24` and `192.168.2.0/23`. The helper log names the narrowed routes
+and lists what was installed. Hosts the company runs inside the same range as
+your LAN are then unreachable over the VPN. Tunnel interfaces are never carved,
+so an overlap with another active VPN is still refused. Explicit `false` keeps
+the strict behavior: any overlap with a local network refuses the attempt.
+`custom` routes are used exactly as listed. The `/1` fallback is not carved;
+the connected LAN route is more specific and stays local. The openfortivpn
+backend installs routes itself and does not apply `preserve_lan`.
 
 With `split`, the helper uses negotiated IPv4 DNS servers, with XML fallback
 for native if IPCP does not supply DNS. It configures only `dns.domains`:

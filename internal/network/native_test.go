@@ -364,6 +364,8 @@ func TestNativeReservations(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "LAN":
+				// Carving is the default; an explicit opt-out keeps the strict refusal.
+				p.Routes.PreserveLAN = new(false)
 				e.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix("192.0.2.0/24")}
 			case "table":
 				r.base.routes = append(r.base.routes, JournalRoute{CIDR: "10.20.1.0/24", Interface: "en0"})

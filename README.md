@@ -46,9 +46,9 @@ openfortivpn backend for push or codes. There is no Windows, IPsec, SAML/SSO,
 client-certificate authentication, DTLS, or IPv6 tunnel routing. Native PPP
 does not support PAP/CHAP or compression. The schema accepts `totp` and
 `static` MFA modes, but clients currently prompt for their codes; automatic
-seed/static-secret storage is not implemented. The `preserve_lan` field
-defaults to true but does not yet install additional LAN bypass routes. Use
-custom routing for predictable local-network access.
+seed/static-secret storage is not implemented. With the native backend,
+`preserve_lan` (default true) keeps local networks out of gateway-pushed routes;
+the openfortivpn backend does not apply it.
 
 ## Installation
 
@@ -422,6 +422,10 @@ Duplicate tunnel IPv4 addresses are refused. Ask administrators for distinct
 address pools; changing routes alone does not fix duplicate local addresses.
 
 `gateway` uses pushed IPv4 routes but rejects ordinary and split defaults.
+With the native backend and `preserve_lan` on (the default), a pushed route that
+overlaps a Wi-Fi or Ethernet network is narrowed around it, so a gateway that
+pushes `192.168.0.0/22` does not take a home LAN on `192.168.1.0/24`; the helper
+log lists the routes it installed. Clashes with another VPN are still refused.
 `custom` uses only the included prefixes. Native `full` uses pushed routes;
 when no split routes are supplied, or defaults are pushed, it installs two
 owned /1 routes plus a physical-link exception for the actual gateway IPv4
@@ -431,7 +435,7 @@ Split DNS manages only the profile's listed domains, not every gateway suffix.
 See [routing and DNS](docs/profiles.md#routes-and-dns-behavior) for details.
 
 IPv6 may continue outside the VPN. There is no kill switch or universal
-DNS/leak-prevention guarantee, and `preserve_lan` alone does not add bypass routes.
+DNS/leak-prevention guarantee, and `preserve_lan` adds no routes of its own.
 
 ## Security model
 

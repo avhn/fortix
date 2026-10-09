@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/netip"
+	"slices"
+	"strings"
 
 	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/native"
@@ -71,4 +74,41 @@ func nativeMilestone(observation backend.Event) string {
 		return "PPP negotiated with local address " + value.LocalIP.String()
 	}
 	return ""
+}
+
+// carvedRoutesMessage reports gateway routes that were not installed as pushed,
+// which happens when local networks are kept off the tunnel. It lists the routes
+// actually installed on the tunnel so the log shows what the VPN now reaches.
+// Default halves are omitted from both sides because they never carve.
+func carvedRoutesMessage(pushed []netip.Prefix, journal network.Journal, iface string) string {
+	var installed []string
+	for _, route := range journal.Routes {
+		if route.Interface == iface {
+			if prefix, err := netip.ParsePrefix(route.CIDR); err == nil && prefix.Bits() > 1 {
+				installed = append(installed, route.CIDR)
+			}
+		}
+	}
+	var changed []string
+	for _, prefix := range pushed {
+		if prefix.Bits() > 1 && !slices.Contains(installed, prefix.String()) {
+			changed = append(changed, prefix.String())
+		}
+	}
+	if len(changed) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("local networks kept off the tunnel; gateway routes %s were narrowed, installed: %s", routeList(changed), routeList(installed))
+}
+
+// routeList joins at most sixteen routes so a large push stays one readable log line.
+func routeList(routes []string) string {
+	const shown = 16
+	if len(routes) == 0 {
+		return "none"
+	}
+	if len(routes) <= shown {
+		return strings.Join(routes, ", ")
+	}
+	return fmt.Sprintf("%s and %d more", strings.Join(routes[:shown], ", "), len(routes)-shown)
 }
