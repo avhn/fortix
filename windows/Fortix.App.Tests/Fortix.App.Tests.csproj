@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- View-model, verification, credential, setup, and theme tests for the Windows app; no window is created. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Fortix.App.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- The app is a self-contained win-x64 executable; the tests load it as a library on the shared runtime. -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <ValidateExecutableReferencesMatchSelfContained>false</ValidateExecutableReferencesMatchSelfContained>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Tests bound every wait with their own timeouts instead of the per-test token. -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Golden vectors shared with the command-line client; copied so tests run from any directory. -->
+    <None Include="..\..\testdata\interop\*.json" LinkBase="interop" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+    <Using Include="System.IO" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fortix.App\Fortix.App.csproj" />
+    <ProjectReference Include="..\Fortix.Core\Fortix.Core.csproj" />
+  </ItemGroup>
+</Project>

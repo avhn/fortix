@@ -1,0 +1,145 @@
+<Window x:Class="Fortix.App.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:Fortix.App.Views"
+        Title="Fortix" Width="760" Height="640" MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterScreen" Icon="/Assets/Fortix.ico">
+  <DockPanel Margin="16">
+    <!-- Status header: the text names the state, so nothing depends on the icon's shape. -->
+    <StackPanel DockPanel.Dock="Top">
+      <DockPanel>
+        <ProgressBar DockPanel.Dock="Right" Width="120" Height="6" IsIndeterminate="True" VerticalAlignment="Center"
+                     Visibility="{Binding Model.Busy, Converter={StaticResource Visible}}"
+                     AutomationProperties.Name="Operation in progress" />
+        <TextBlock Text="{Binding Model.StatusText}" FontSize="18" FontWeight="SemiBold"
+                   AutomationProperties.LiveSetting="Polite" AutomationProperties.Name="{Binding Model.StatusText, StringFormat='Status: {0}'}" />
+      </DockPanel>
+      <TextBox Text="{Binding Model.Message, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+               Margin="{StaticResource Gap}" Visibility="{Binding Model.Message, Converter={StaticResource VisibleWhenText}}"
+               AutomationProperties.Name="Last result" AutomationProperties.LiveSetting="Assertive" />
+      <TextBlock Text="{Binding Model.ConnectionProblem}" Style="{StaticResource Note}"
+                 Visibility="{Binding Model.ConnectionProblem, Converter={StaticResource VisibleWhenText}}" />
+    </StackPanel>
+
+    <!-- First run: shown while the helper service is missing or not running. -->
+    <Border DockPanel.Dock="Top" BorderThickness="1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+            CornerRadius="6" Padding="12" Margin="0,0,0,12"
+            Visibility="{Binding Setup.NeedsSetup, Converter={StaticResource Visible}}">
+      <StackPanel>
+        <TextBlock Text="Set up the Fortix helper" Style="{StaticResource Heading}" Margin="0,0,0,6" />
+        <TextBlock Text="{Binding Setup.Explanation}" TextWrapping="Wrap" Margin="{StaticResource Gap}" />
+        <StackPanel Orientation="Horizontal">
+          <Button Content="_Install helper..." Command="{Binding Setup.InstallCommand}" Padding="12,4" Margin="0,0,8,0" />
+          <Button Content="_Refresh" Command="{Binding Setup.RefreshCommand}" Padding="12,4" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <!-- Installer result: outside the setup page, which hides as soon as the service runs, so a
+         successful install and its sign-out instruction stay visible on every tab. -->
+    <Border DockPanel.Dock="Top" BorderThickness="1" BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+            CornerRadius="6" Padding="12" Margin="0,0,0,12"
+            Visibility="{Binding Setup.ShowsResult, Converter={StaticResource Visible}}">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Dismiss" Command="{Binding Setup.DismissResultCommand}" Padding="10,4" Margin="8,0,0,0"
+                VerticalAlignment="Top" AutomationProperties.Name="Dismiss installation result"
+                Visibility="{Binding Setup.CanDismissResult, Converter={StaticResource Visible}}" />
+        <TextBox Text="{Binding Setup.Result, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+                 AutomationProperties.Name="Installation result" AutomationProperties.LiveSetting="Assertive" />
+      </DockPanel>
+    </Border>
+
+    <TabControl x:Name="Tabs">
+      <TabItem Header="_Profiles">
+        <DockPanel Margin="8">
+          <WrapPanel DockPanel.Dock="Top" Margin="{StaticResource Gap}">
+            <Button Content="_New profile" Click="NewProfile" Padding="10,4" Margin="0,0,6,6" IsEnabled="{Binding Model.Reachable}" />
+            <Button Content="I_mport profile..." Click="ImportProfiles" Padding="10,4" Margin="0,0,6,6" IsEnabled="{Binding Model.Reachable}" />
+            <Button Content="_Export..." Click="ExportProfiles" Padding="10,4" Margin="0,0,18,6"
+                    ToolTip="Exports the selected profile, or all profiles when none is selected, without usernames or passwords" />
+            <Button Content="Connect _all" Command="{Binding Model.ConnectAllCommand}" Padding="10,4" Margin="0,0,6,6" />
+            <Button Content="_Disconnect all" Command="{Binding Model.DisconnectAllCommand}" Padding="10,4" Margin="0,0,6,6" />
+          </WrapPanel>
+          <TextBlock DockPanel.Dock="Top" Style="{StaticResource Note}" x:Name="EmptyNote"
+                     Text="No profiles. Create a profile or import a profile file." />
+          <ListBox x:Name="ProfileList" ItemsSource="{Binding Model.Rows}" HorizontalContentAlignment="Stretch"
+                   AutomationProperties.Name="Profiles" KeyboardNavigation.TabNavigation="Continue">
+            <ListBox.ItemContainerStyle>
+              <Style TargetType="ListBoxItem" BasedOn="{StaticResource {x:Type ListBoxItem}}">
+                <Setter Property="AutomationProperties.Name" Value="{Binding Name}" />
+                <Setter Property="KeyboardNavigation.TabNavigation" Value="Continue" />
+              </Style>
+            </ListBox.ItemContainerStyle>
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <StackPanel Margin="4,8">
+                  <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Text="{Binding StateText}" Margin="12,0,0,0" />
+                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" />
+                  </DockPanel>
+                  <TextBlock Text="{Binding Endpoint}" Style="{StaticResource Note}" />
+                  <TextBlock Text="{Binding Detail}" Style="{StaticResource Note}" Visibility="{Binding Detail, Converter={StaticResource VisibleWhenText}}" />
+                  <TextBlock Text="{Binding UnavailableReason}" Style="{StaticResource Warning}" Visibility="{Binding UnavailableReason, Converter={StaticResource VisibleWhenText}}" />
+                  <TextBlock Text="Network cleanup pending. Disconnect has not completed." Style="{StaticResource Warning}"
+                             Visibility="{Binding CleanupPending, Converter={StaticResource Visible}}" />
+                  <WrapPanel Margin="0,4,0,0">
+                    <Button Content="Connect" Command="{Binding ConnectCommand}" Padding="10,3" Margin="0,0,6,4"
+                            AutomationProperties.Name="{Binding Name, StringFormat='Connect {0}'}" />
+                    <Button Content="Disconnect" Command="{Binding DisconnectCommand}" Padding="10,3" Margin="0,0,6,4"
+                            AutomationProperties.Name="{Binding Name, StringFormat='Disconnect {0}'}" />
+                    <Button Content="Edit" Click="EditProfile" IsEnabled="{Binding CanEdit}" Padding="10,3" Margin="0,0,6,4"
+                            AutomationProperties.Name="{Binding Name, StringFormat='Edit {0}'}" />
+                    <Button Content="Forget password" Command="{Binding ForgetPasswordCommand}" Padding="10,3" Margin="0,0,6,4"
+                            AutomationProperties.Name="{Binding Name, StringFormat='Forget the saved password of {0}'}" />
+                    <Button Content="Delete" Click="DeleteProfile" IsEnabled="{Binding CanEdit}" Padding="10,3" Margin="0,0,6,4"
+                            AutomationProperties.Name="{Binding Name, StringFormat='Delete {0}'}" />
+                  </WrapPanel>
+                </StackPanel>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
+      </TabItem>
+
+      <TabItem Header="_Logs">
+        <DockPanel Margin="8">
+          <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="{StaticResource Gap}">
+            <Label Content="Pro_file" Target="{Binding ElementName=LogProfile}" VerticalAlignment="Center" />
+            <ComboBox x:Name="LogProfile" ItemsSource="{Binding Model.Rows}" DisplayMemberPath="Name" SelectedValuePath="Id"
+                      MinWidth="220" Margin="0,0,8,0" AutomationProperties.Name="Profile for logs" />
+            <Button Content="Load _recent logs" Command="{Binding Model.LoadLogsCommand}" CommandParameter="{Binding SelectedValue, ElementName=LogProfile}" Padding="10,4" />
+          </StackPanel>
+          <TextBlock DockPanel.Dock="Bottom" Style="{StaticResource Note}" Text="Shows up to 500 redacted lines. Credentials are never included." />
+          <TextBox Text="{Binding Model.LogText, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" TextWrapping="NoWrap"
+                   VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" AutomationProperties.Name="Log lines" />
+        </DockPanel>
+      </TabItem>
+
+      <TabItem Header="_Settings">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+          <StackPanel Margin="8">
+            <TextBlock Text="Appearance and startup" Style="{StaticResource Heading}" />
+            <CheckBox Content="Animate the connecting icon" IsChecked="{Binding Settings.AnimateIcon}" Margin="{StaticResource Gap}" />
+            <CheckBox Content="Start Fortix in the notification area when I sign in" IsChecked="{Binding Settings.StartAtSignIn}" Margin="{StaticResource Gap}" />
+            <TextBlock Text="{Binding Settings.Message}" Style="{StaticResource Warning}" Visibility="{Binding Settings.Message, Converter={StaticResource VisibleWhenText}}" />
+
+            <TextBlock Text="Helper service" Style="{StaticResource Heading}" />
+            <TextBlock Text="{Binding Setup.Explanation}" TextWrapping="Wrap" Margin="{StaticResource Gap}" />
+            <StackPanel Orientation="Horizontal" Margin="{StaticResource Gap}">
+              <Button Content="Install or update helper..." Command="{Binding Setup.InstallCommand}" Padding="10,4" Margin="0,0,8,0" />
+              <Button Content="Refresh" Command="{Binding Setup.RefreshCommand}" Padding="10,4" />
+            </StackPanel>
+            <TextBlock Style="{StaticResource Note}"
+                       Text="Quitting Fortix leaves tunnels running, because the helper service owns them. To remove the helper, disconnect all profiles, then run fortix-helper.exe uninstall from an administrator terminal. Profiles and saved passwords are kept." />
+
+            <TextBlock Text="Two-factor authentication" Style="{StaticResource Heading}" />
+            <TextBlock Style="{StaticResource Note}" Text="{x:Static views:MainWindow.MfaNote}" />
+
+            <TextBlock Text="About" Style="{StaticResource Heading}" />
+            <TextBlock x:Name="AboutText" Style="{StaticResource Note}" />
+          </StackPanel>
+        </ScrollViewer>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

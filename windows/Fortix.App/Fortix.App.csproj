@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The Windows notification-area app; talks to the helper service and never changes networking itself. -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <!-- 19041 through 19045 (Windows 10 20H1 to 22H2) share one API surface; the SDK forbids a minimum above the target. -->
+    <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>FortixApp</AssemblyName>
+    <RootNamespace>Fortix.App</RootNamespace>
+    <ApplicationIcon>Assets\Fortix.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- CI passes -p:FortixVersion=x.y.z; local builds identify themselves as development builds. -->
+    <FortixVersion Condition="'$(FortixVersion)' == ''">0.0.0-dev</FortixVersion>
+    <Version>$(FortixVersion)</Version>
+    <Product>Fortix</Product>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- ReadyToRun needs a Windows crossgen host; releases are published from non-Windows runners too. -->
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <!-- The release folder carries FortixApp.exe alone: symbols and XML docs stay in the build output. -->
+    <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <PublishDocumentationFile>false</PublishDocumentationFile>
+    <PublishReferencesDocumentationFiles>false</PublishReferencesDocumentationFiles>
+    <AllowedReferenceRelatedFileExtensions Condition="'$(_IsPublishing)' == 'true'">none</AllowedReferenceRelatedFileExtensions>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Windows.CsWin32" Version="0.3.360">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- WPF leaves System.IO out of the implicit usings; nothing here uses the Shapes.Path type. -->
+    <Using Include="System.IO" />
+    <InternalsVisibleTo Include="Fortix.App.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\Fortix.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fortix.Core\Fortix.Core.csproj" />
+  </ItemGroup>
+</Project>

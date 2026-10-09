@@ -1,0 +1,171 @@
+<Window x:Class="Fortix.App.Views.ProfileEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Fortix.App.ViewModels"
+        Title="{Binding Editor.Title}" Width="680" Height="720" MinWidth="520" MinHeight="480"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+  <Window.Resources>
+    <Style TargetType="Label">
+      <Setter Property="Padding" Value="0,6,0,2" />
+    </Style>
+    <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+      <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+    <!-- One removable row of a route, excluded range, or domain list. -->
+    <DataTemplate x:Key="EntryTemplate" DataType="{x:Type vm:EntryRow}">
+      <StackPanel Margin="0,0,0,4">
+        <DockPanel>
+          <Button DockPanel.Dock="Right" Content="Remove" Padding="8,2" Margin="6,0,0,0"
+                  Command="{Binding DataContext.Editor.RemoveRowCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding}"
+                  AutomationProperties.Name="{Binding Text, StringFormat='Remove entry {0}'}" />
+          <TextBox Text="{Binding Text, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Entry" />
+        </DockPanel>
+        <TextBlock Text="{Binding Problem}" Style="{StaticResource Warning}" Visibility="{Binding Problem, Converter={StaticResource VisibleWhenText}}" />
+      </StackPanel>
+    </DataTemplate>
+  </Window.Resources>
+  <DockPanel Margin="16">
+    <TextBlock DockPanel.Dock="Top" Text="{Binding Editor.Title}" Style="{StaticResource Heading}" Margin="0,0,0,8" />
+
+    <StackPanel DockPanel.Dock="Bottom" Margin="0,12,0,0">
+      <TextBox Text="{Binding Model.Message, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent"
+               Visibility="{Binding Model.Message, Converter={StaticResource VisibleWhenText}}" AutomationProperties.Name="Last result" />
+      <DockPanel>
+        <StackPanel Orientation="Horizontal" DockPanel.Dock="Left">
+          <Button Content="_Forget password" Click="ForgetPassword" Padding="10,4" Margin="0,0,6,0"
+                  Visibility="{Binding Editor.CanForgetPassword, Converter={StaticResource Visible}}" />
+          <Button Content="S_top import" Click="StopImportClick" Padding="10,4" IsEnabled="{Binding Gate.Idle}"
+                  Visibility="{Binding Editor.CanStopImport, Converter={StaticResource Visible}}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+          <Button Content="{Binding Editor.DismissLabel}" IsCancel="True" Padding="14,4" Margin="0,0,6,0" IsEnabled="{Binding Gate.Idle}" />
+          <Button Content="_Save" IsDefault="True" Click="Save" Padding="14,4" IsEnabled="{Binding Editor.CanSave}" />
+        </StackPanel>
+      </DockPanel>
+    </StackPanel>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" Focusable="False">
+      <StackPanel Margin="0,0,8,0" IsEnabled="{Binding Model.Busy, Converter={StaticResource Not}}">
+        <!-- Import: a new profile, or an explicit merge into a chosen existing profile. -->
+        <StackPanel Visibility="{Binding Editor.IsImport, Converter={StaticResource Visible}}">
+          <TextBlock Text="Import" Style="{StaticResource Heading}" />
+          <StackPanel Visibility="{Binding Editor.CanMerge, Converter={StaticResource Visible}}">
+            <RadioButton Content="Import as a new profile" GroupName="Target" Margin="0,0,0,4"
+                         IsChecked="{Binding Editor.IsMerge, Converter={StaticResource Not}}" />
+            <RadioButton Content="Merge into an existing profile" GroupName="Target" Margin="0,0,0,4" IsChecked="{Binding Editor.IsMerge}" />
+            <ComboBox ItemsSource="{Binding Editor.ExistingProfiles}" SelectedValuePath="Id" SelectedValue="{Binding Editor.MergeId}"
+                      Visibility="{Binding Editor.IsMerge, Converter={StaticResource Visible}}" AutomationProperties.Name="Existing profile to merge into">
+              <ComboBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock>
+                    <Run Text="{Binding Name, Mode=OneWay}" /> (<Run Text="{Binding Id, Mode=OneWay}" />)
+                  </TextBlock>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock Style="{StaticResource Note}" Visibility="{Binding Editor.IsMerge, Converter={StaticResource Visible}}"
+                       Text="Only fields in the file replace this profile's values. Its ID and username are kept, and routes and DNS domains in the file replace those lists as a whole." />
+            <TextBlock Text="{Binding Editor.GatewayChangeWarning}" Style="{StaticResource Warning}"
+                       Visibility="{Binding Editor.GatewayChangeWarning, Converter={StaticResource VisibleWhenText}}" />
+          </StackPanel>
+          <TextBlock Style="{StaticResource Note}" Visibility="{Binding Editor.IsMerge, Converter={StaticResource CollapsedWhen}}"
+                     Text="Fields marked as not in the imported file must be filled in before saving." />
+        </StackPanel>
+
+        <TextBlock Text="Connection" Style="{StaticResource Heading}" />
+        <Label Content="Profile _ID" Target="{Binding ElementName=IdBox}" />
+        <TextBox x:Name="IdBox" Text="{Binding Editor.Id, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding Editor.IdEditable}" />
+        <TextBlock Text="{Binding Editor.IdNote}" Style="{StaticResource Warning}" Visibility="{Binding Editor.IdNote, Converter={StaticResource VisibleWhenText}}" />
+        <Label Content="_Name" Target="{Binding ElementName=NameBox}" />
+        <TextBox x:Name="NameBox" Text="{Binding Editor.Name, UpdateSourceTrigger=PropertyChanged}" />
+        <TextBlock Text="{Binding Editor.NameNote}" Style="{StaticResource Warning}" Visibility="{Binding Editor.NameNote, Converter={StaticResource VisibleWhenText}}" />
+        <Label Content="_Gateway" Target="{Binding ElementName=HostBox}" />
+        <TextBox x:Name="HostBox" Text="{Binding Editor.Host, UpdateSourceTrigger=PropertyChanged}" />
+        <TextBlock Text="{Binding Editor.HostNote}" Style="{StaticResource Warning}" Visibility="{Binding Editor.HostNote, Converter={StaticResource VisibleWhenText}}" />
+        <Label Content="TLS _port" Target="{Binding ElementName=PortBox}" />
+        <TextBox x:Name="PortBox" Text="{Binding Editor.Port, UpdateSourceTrigger=PropertyChanged}" />
+        <Label Content="_Realm" Target="{Binding ElementName=RealmBox}" />
+        <TextBox x:Name="RealmBox" Text="{Binding Editor.Realm, UpdateSourceTrigger=PropertyChanged}" />
+        <Label Content="_Username" Target="{Binding ElementName=UserBox}" />
+        <TextBox x:Name="UserBox" Text="{Binding Editor.Username, UpdateSourceTrigger=PropertyChanged}" />
+        <TextBlock Text="{Binding Editor.UsernameNote}" Style="{StaticResource Warning}" Visibility="{Binding Editor.UsernameNote, Converter={StaticResource VisibleWhenText}}" />
+        <Label Content="_Backend" Target="{Binding ElementName=BackendBox}" />
+        <ComboBox x:Name="BackendBox" ItemsSource="{x:Static vm:ProfileEditorViewModel.Backends}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                  SelectedValue="{Binding Editor.Backend}" />
+        <Label Content="Second _factor" Target="{Binding ElementName=MfaBox}" />
+        <ComboBox x:Name="MfaBox" ItemsSource="{x:Static vm:ProfileEditorViewModel.MfaModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                  SelectedValue="{Binding Editor.MfaMode}" />
+        <StackPanel Visibility="{Binding Editor.IsTotp, Converter={StaticResource Visible}}">
+          <Label Content="TOTP digits" Target="{Binding ElementName=DigitsBox}" />
+          <TextBox x:Name="DigitsBox" Text="{Binding Editor.TotpDigits, UpdateSourceTrigger=PropertyChanged}" />
+          <Label Content="TOTP period (seconds)" Target="{Binding ElementName=PeriodBox}" />
+          <TextBox x:Name="PeriodBox" Text="{Binding Editor.TotpPeriod, UpdateSourceTrigger=PropertyChanged}" />
+          <Label Content="TOTP algorithm" Target="{Binding ElementName=AlgorithmBox}" />
+          <ComboBox x:Name="AlgorithmBox" ItemsSource="{x:Static vm:ProfileEditorViewModel.Algorithms}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                    SelectedValue="{Binding Editor.TotpAlgorithm}" />
+        </StackPanel>
+        <TextBlock Text="{Binding Editor.NativeMfaNote}" Style="{StaticResource Note}" Visibility="{Binding Editor.NativeMfaNote, Converter={StaticResource VisibleWhenText}}" />
+        <TextBlock Text="{Binding Editor.WindowsNote}" Style="{StaticResource Warning}" Visibility="{Binding Editor.WindowsNote, Converter={StaticResource VisibleWhenText}}"
+                   AutomationProperties.LiveSetting="Polite" />
+
+        <TextBlock Text="Routes" Style="{StaticResource Heading}" />
+        <Label Content="Rou_ting" Target="{Binding ElementName=RoutesBox}" />
+        <ComboBox x:Name="RoutesBox" ItemsSource="{x:Static vm:ProfileEditorViewModel.RouteModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                  SelectedValue="{Binding Editor.RoutesMode}" />
+        <StackPanel Visibility="{Binding Editor.IsCustomRoutes, Converter={StaticResource Visible}}" Margin="0,6,0,0">
+          <TextBlock Text="IPv4 prefixes, for example 192.0.2.0/24" Style="{StaticResource Note}" />
+          <ItemsControl ItemsSource="{Binding Editor.RouteRows}" ItemTemplate="{StaticResource EntryTemplate}" Focusable="False" AutomationProperties.Name="IPv4 prefixes" />
+          <DockPanel>
+            <Button Content="Add IPv4 prefix" Command="{Binding Editor.AddRouteCommand}" Padding="8,2" />
+            <TextBlock Text="{Binding Editor.RoutesListProblem}" Style="{StaticResource Warning}" Margin="8,2,0,0" />
+          </DockPanel>
+        </StackPanel>
+        <StackPanel Visibility="{Binding Editor.ShowExcludes, Converter={StaticResource Visible}}" Margin="0,6,0,0">
+          <TextBlock Text="Excluded routes, for example 192.0.2.0/24" Style="{StaticResource Note}" />
+          <ItemsControl ItemsSource="{Binding Editor.ExcludeRows}" ItemTemplate="{StaticResource EntryTemplate}" Focusable="False" AutomationProperties.Name="Excluded routes" />
+          <DockPanel>
+            <Button Content="Add excluded route" Command="{Binding Editor.AddExcludeCommand}" Padding="8,2" />
+            <TextBlock Text="{Binding Editor.ExcludeListProblem}" Style="{StaticResource Warning}" Margin="8,2,0,0" />
+          </DockPanel>
+          <TextBlock Style="{StaticResource Note}"
+                     Text="Ranges left out of the routes this VPN's gateway sends, for example a network another VPN uses, so both can connect at once. Requires the native backend." />
+        </StackPanel>
+        <CheckBox Content="Preserve _local network" IsChecked="{Binding Editor.PreserveLan}" Margin="0,6,0,0" />
+        <TextBlock Text="Full tunnel sends all IPv4 traffic through this VPN." Style="{StaticResource Note}"
+                   Visibility="{Binding Editor.IsFullTunnel, Converter={StaticResource Visible}}" />
+
+        <TextBlock Text="DNS" Style="{StaticResource Heading}" />
+        <Label Content="_DNS policy" Target="{Binding ElementName=DnsBox}" />
+        <ComboBox x:Name="DnsBox" ItemsSource="{x:Static vm:ProfileEditorViewModel.DnsModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                  SelectedValue="{Binding Editor.DnsMode}" />
+        <StackPanel Visibility="{Binding Editor.IsSplitDns, Converter={StaticResource Visible}}" Margin="0,6,0,0">
+          <TextBlock Text="Domains, for example *.example.com" Style="{StaticResource Note}" />
+          <ItemsControl ItemsSource="{Binding Editor.DomainRows}" ItemTemplate="{StaticResource EntryTemplate}" Focusable="False" AutomationProperties.Name="DNS domains" />
+          <DockPanel>
+            <Button Content="Add DNS domain" Command="{Binding Editor.AddDomainCommand}" Padding="8,2" />
+            <TextBlock Text="{Binding Editor.DomainsListProblem}" Style="{StaticResource Warning}" Margin="8,2,0,0" />
+          </DockPanel>
+          <TextBlock Style="{StaticResource Note}" Text="A leading *. is removed: *.example.com covers example.com and its subdomains." />
+        </StackPanel>
+
+        <TextBlock Text="Certificate trust" Style="{StaticResource Heading}" />
+        <StackPanel Visibility="{Binding Editor.ImportedPin, Converter={StaticResource VisibleWhenText}}">
+          <TextBlock Text="Unverified fingerprint from the imported file" FontWeight="SemiBold" />
+          <TextBox Text="{Binding Editor.ImportedPin, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap"
+                   AutomationProperties.Name="Unverified fingerprint from the imported file" />
+          <TextBlock Style="{StaticResource Note}"
+                     Text="Whoever made this file supplied this SHA-256 fingerprint, and it is not saved. A matching fingerprint proves nothing if the file itself was tampered with. If the gateway certificate cannot be verified when you connect, confirm its fingerprint with your administrator over a separate channel before trusting it." />
+        </StackPanel>
+        <TextBox Text="{Binding Editor.TrustedCertText, Mode=OneWay}" IsReadOnly="True" FontFamily="Consolas" TextWrapping="Wrap"
+                 AutomationProperties.Name="Stored certificate pin" />
+        <TextBlock Style="{StaticResource Note}" Text="A certificate pin can only be changed by verifying an active rejected certificate." />
+
+        <StackPanel Visibility="{Binding Editor.ShowProblems, Converter={StaticResource Visible}}">
+          <TextBlock Text="Problems to fix" Style="{StaticResource Heading}" />
+          <TextBox Text="{Binding Editor.ProblemsText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AutomationProperties.Name="Problems to fix"
+                   AutomationProperties.LiveSetting="Assertive" />
+        </StackPanel>
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>
