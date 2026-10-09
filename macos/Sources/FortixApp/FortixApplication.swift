@@ -20,6 +20,9 @@ struct FortixApplication: App {
     }
     .defaultSize(width: AppTheme.windowWidth, height: AppTheme.windowHeight)
     .commands {
+      CommandGroup(replacing: .appInfo) {
+        Button("About Fortix") { showAboutPanel() }
+      }
       CommandGroup(replacing: .appTermination) {
         Button("Quit Fortix (leave tunnels running)") { NSApplication.shared.terminate(nil) }
           .keyboardShortcut("q")
@@ -91,6 +94,7 @@ struct FortixMenu: View {
       NSApplication.shared.activate(ignoringOtherApps: true)
     }
     Divider()
+    Button("About Fortix") { showAboutPanel() }
     Button("Quit Fortix (leave tunnels running)") { NSApplication.shared.terminate(nil) }
     Button("Disconnect all and quit") {
       model.perform {
@@ -99,4 +103,23 @@ struct FortixMenu: View {
       }
     }.disabled(!model.reachable || model.busy)
   }
+}
+
+/// ShowAboutPanel presents the standard About panel with the license and trademark notice.
+/// The app is an accessory without a Dock icon, so it activates first to bring the panel forward.
+@MainActor
+func showAboutPanel() {
+  let notice =
+    "Free software under the GNU General Public License, version 3 or later.\n"
+    + "Not affiliated with or endorsed by Fortinet. FortiGate and FortiClient are "
+    + "trademarks of Fortinet, Inc."
+  NSApplication.shared.activate(ignoringOtherApps: true)
+  NSApplication.shared.orderFrontStandardAboutPanel(options: [
+    .credits: NSAttributedString(
+      string: notice,
+      attributes: [
+        .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+        .foregroundColor: NSColor.secondaryLabelColor,
+      ])
+  ])
 }

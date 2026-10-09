@@ -8,6 +8,10 @@
     <string>Fortix</string>
     <key>CFBundleExecutable</key>
     <string>Fortix</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.github.avhn.fortix</string>
     <key>CFBundleInfoDictionaryVersion</key>

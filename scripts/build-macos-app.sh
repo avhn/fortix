@@ -43,6 +43,9 @@ cp "${REPO_ROOT}/packaging/macos/Info.plist" "${APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION%%[-+]*}" "${APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${VERSION%%[-+]*}" "${APP}/Contents/Info.plist"
 cp "${REPO_ROOT}/LICENSE" "${REPO_ROOT}/THIRD_PARTY_NOTICES.txt" "${APP}/Contents/Resources/"
+# The icon is compiled by scripts/build-icon.sh on a newer Xcode and committed, so this
+# step only copies it: Assets.car serves macOS 26 appearances, AppIcon.icns older releases.
+cp "${REPO_ROOT}/packaging/macos/Assets.car" "${REPO_ROOT}/packaging/macos/AppIcon.icns" "${APP}/Contents/Resources/"
 plutil -lint "${APP}/Contents/Info.plist"
 
 # Sign nested executables before sealing the outer bundle; never rely on --deep signing.

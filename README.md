@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-header-dark.png">
+    <img src="docs/assets/readme-header.png" alt="Fortix app icon: a white arch opening onto a lit tunnel" width="640">
+  </picture>
+</p>
+
 # fortix
 
 FortiGate SSL VPN profile manager for macOS and Debian/Ubuntu. The CLI, macOS
@@ -380,6 +387,10 @@ terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later
 version (`GPL-3.0-or-later`). It is distributed in the hope that it will be
 useful, but WITHOUT ANY WARRANTY; see [LICENSE](LICENSE) for details.
+
+fortix is an independent open source project. It is not affiliated with or
+endorsed by Fortinet. FortiGate and FortiClient are trademarks of Fortinet, Inc.,
+used here only to describe compatibility.
 
 openfortivpn, which fortix drives as a separate program, is also GPL-3.0
 licensed. Packages that bundle it ship its license, the licenses of its bundled
