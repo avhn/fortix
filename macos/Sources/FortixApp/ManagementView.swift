@@ -133,7 +133,7 @@ struct ManagementView: View {
             Text(model.reachable ? (state?.state ?? "unknown") : "Status unavailable")
           }
           Text(
-            "\(profile.gateway.host):\(profile.gateway.resolvedPort) | \(profile.resolvedBackend)"
+            "\(profile.gateway.host):\(String(profile.gateway.resolvedPort)) | \(profile.resolvedBackend)"
           )
           .font(.caption).foregroundStyle(.secondary)
           if let detail = state?.detail, !detail.isEmpty { Text(detail).font(.caption) }
@@ -236,7 +236,7 @@ private struct ChallengeSheet: View {
   var body: some View {
     VStack(alignment: .leading, spacing: AppTheme.spacing) {
       Text(prompt.isCertificate ? "Verify certificate" : "Credential required").font(.title2)
-      Text("Profile: \(prompt.event.profile), attempt \(prompt.event.attempt)")
+      Text("Profile: \(prompt.event.profile), attempt \(String(prompt.event.attempt))")
       if prompt.isCertificate {
         Text(
           "The certificate could not be verified. Compare this SHA-256 fingerprint with your administrator before trusting it."
@@ -298,7 +298,7 @@ private struct ImportPreview: View {
       List(model.importDrafts) { draft in
         VStack(alignment: .leading, spacing: AppTheme.spacing) {
           Text("\(draft.name) (\(draft.id))").font(.headline)
-          Text("\(draft.gateway.host):\(draft.gateway.resolvedPort), username: \(draft.username)")
+          Text("\(draft.gateway.host):\(String(draft.gateway.resolvedPort)), username: \(draft.username)")
           Text("Backend: \(draft.resolvedBackend), MFA: \(draft.mfa.mode)")
           Text(
             "Routes: \(draft.routes.mode) \((draft.routes.include ?? []).joined(separator: ", "))")
