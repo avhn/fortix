@@ -221,7 +221,10 @@ func (c *Client) Call(ctx context.Context, r protocol.Request, dst any) error {
 	}
 	cancel()
 	if err == nil {
-		err = c.conn.SetWriteDeadline(time.Time{})
+		// The request is already sent, so a peer that replies and closes before the reset
+		// must not turn a delivered reply into a write failure. Every write sets its own
+		// deadline first, so a failed reset leaves nothing stale behind.
+		_ = c.conn.SetWriteDeadline(time.Time{})
 	}
 	c.writes <- struct{}{}
 	if err != nil {
