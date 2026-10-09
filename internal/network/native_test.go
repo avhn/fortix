@@ -177,7 +177,7 @@ func journalSnapshot(t *testing.T, j Journal) Journal {
 }
 
 // nativeAttempt reserves policy and binds a fake allocated link before configuration.
-// Returned effect includes an authoritative local/peer pair and an unrelated DNS suffix.
+// Returned effect includes distinct per-link local/peer pairs and an unrelated DNS suffix.
 func nativeAttempt(t *testing.T, m *Manager, p *profile.Profile, number int) (session.Effect, Journal) {
 	t.Helper()
 	if err := m.CheckUp(context.Background(), p); err != nil {
@@ -187,7 +187,7 @@ func nativeAttempt(t *testing.T, m *Manager, p *profile.Profile, number int) (se
 	if m.os == "darwin" {
 		name = fmt.Sprintf("utun%d", number)
 	}
-	e := session.Effect{Profile: p.ID, Attempt: 1, Interface: name, Link: backend.LinkIdentity{Interface: name, Index: 12 + number}, LocalIP: netip.MustParseAddr(fmt.Sprintf("10.99.0.%d", 2+number)), PeerIP: netip.MustParseAddr("10.99.0.1"), MTU: 1354, DNS: []netip.Addr{netip.MustParseAddr("10.20.0.1")}, Suffix: "pushed.example.net"}
+	e := session.Effect{Profile: p.ID, Attempt: 1, Interface: name, Link: backend.LinkIdentity{Interface: name, Index: 12 + number}, LocalIP: netip.MustParseAddr(fmt.Sprintf("10.99.0.%d", 2+number)), PeerIP: netip.MustParseAddr(fmt.Sprintf("10.99.%d.1", number)), MTU: 1354, DNS: []netip.Addr{netip.MustParseAddr("10.20.0.1")}, Suffix: "pushed.example.net"}
 	j := Journal{Profile: p.ID, Attempt: e.Attempt}
 	if err := m.RegisterLink(context.Background(), p.ID, e.Attempt, e.Link, &j, ignoreJournal); err != nil {
 		t.Fatal(err)
@@ -207,7 +207,8 @@ func configuredNative(t *testing.T, m *Manager, p *profile.Profile, number int) 
 }
 
 // TestNativeConfiguration proves registration precedes mutation and platform argv
-// configures the negotiated local IP, peer and MTU. Repeated configuration is inert.
+// configures the negotiated local IP, peer and MTU. Repeated configuration only reads
+// live routes to revalidate endpoints, without duplicating persistence or mutations.
 func TestNativeConfiguration(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
 		t.Run(platform, func(t *testing.T) {
@@ -216,6 +217,9 @@ func TestNativeConfiguration(t *testing.T) {
 			e, j := nativeAttempt(t, m, p, 0)
 			durable := journalSnapshot(t, j)
 			r.before = func(args []string) {
+				if args[0] == "-j" || args[0] == "-rn" {
+					return
+				}
 				if durable.Backend != "native" || durable.Link == nil || *durable.Link != e.Link || durable.LocalIP != e.LocalIP.String() || durable.MTU != e.MTU {
 					t.Fatalf("configuration without durable identity/address intent: %v %+v", args, durable)
 				}
@@ -229,9 +233,13 @@ func TestNativeConfiguration(t *testing.T) {
 				t.Fatalf("configuration mismatch: %+v", link)
 			}
 			calls := len(r.base.calls)
-			if err := m.ConfigureNative(context.Background(), e, &j, ignoreJournal); err != nil || len(r.base.calls) != calls {
+			if err := m.ConfigureNative(context.Background(), e, &j, ignoreJournal); err != nil || len(r.base.calls) != calls+1 {
 				t.Fatalf("non-idempotent configuration: %v", err)
 			}
+			if call := r.base.calls[calls]; !slices.Contains(call, "-j") && !slices.Contains(call, "-rn") {
+				t.Fatalf("retry mutated host: %v", call)
+			}
+			calls = len(r.base.calls)
 			changed := e
 			changed.MTU++
 			if err := m.ConfigureNative(context.Background(), changed, &j, ignoreJournal); err == nil || len(r.base.calls) != calls {
@@ -243,6 +251,7 @@ func TestNativeConfiguration(t *testing.T) {
 
 // TestNativeIdentityRefusals checks name-only use, wrong platform/index/generation,
 // forged process identity, duplicate registration, failed persistence and missing IP.
+// Failed configuration persistence may inspect routes but never mutates the fake host.
 func TestNativeIdentityRefusals(t *testing.T) {
 	for _, scenario := range []string{"name only", "wrong platform", "wrong index", "wrong attempt", "process identity", "registration persistence", "configuration persistence", "kernel IP", "reused index"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -288,8 +297,15 @@ func TestNativeIdentityRefusals(t *testing.T) {
 				r.links[e.Interface].index++
 				err = m.ConfigureNative(context.Background(), e, &j, ignoreJournal)
 			}
-			if err == nil || len(r.base.calls) != calls {
+			if err == nil || (len(r.base.calls) != calls && scenario != "configuration persistence") {
 				t.Fatalf("unsafe identity mutated fake host: %v calls=%v", err, r.base.calls)
+			}
+			if scenario == "configuration persistence" {
+				for _, call := range r.base.calls[calls:] {
+					if !slices.Contains(call, "-rn") {
+						t.Fatalf("failed persistence mutated host: %v", call)
+					}
+				}
 			}
 		})
 	}

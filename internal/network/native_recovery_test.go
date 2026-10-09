@@ -58,7 +58,8 @@ func TestNativeReusedLinkRecovery(t *testing.T) {
 }
 
 // TestNativeStaleJournal refuses an old attempt even when a new tunnel has the same
-// interface name and local IP. Neither its resources nor its reservation are released.
+// interface name and local IP after transport closure removes the old connected route.
+// Neither the new attempt's resources nor its reservation are released.
 func TestNativeStaleJournal(t *testing.T) {
 	m, r := nativeManager(t, "linux")
 	p := nativeProfile("work")
@@ -69,6 +70,9 @@ func TestNativeStaleJournal(t *testing.T) {
 	if err := m.Teardown(context.Background(), old); err != nil {
 		t.Fatal(err)
 	}
+	// Device closure, not manager teardown, removes this kernel-connected route.
+	r.base.routes = slices.DeleteFunc(r.base.routes, func(route JournalRoute) bool { return route.Interface == e.Interface })
+	r.links[e.Interface].local, r.links[e.Interface].peer = netip.Addr{}, netip.Addr{}
 	r.links[e.Interface].index++
 	if err := m.CheckUp(context.Background(), p); err != nil {
 		t.Fatal(err)

@@ -65,7 +65,8 @@ func TestNativeFullRoutes(t *testing.T) {
 // TestGatewaySharing holds the physical host exception across a full tunnel and a split
 // tunnel whose negotiated route contains the TLS peer. The first stop removes only its
 // defaults; only the last reference deletes the host route.
-// Kernel-connected peers on both links survive every helper-owned resource release.
+// Both distinct links are configured before full routes cover their endpoints;
+// kernel-connected peers survive every helper-owned resource release.
 func TestGatewaySharing(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
 		t.Run(platform, func(t *testing.T) {
@@ -73,14 +74,14 @@ func TestGatewaySharing(t *testing.T) {
 			full := nativeProfile("work")
 			full.Routes = profile.Routes{Mode: "full"}
 			e, first := configuredNative(t, m, full, 0)
+			other := nativeProfile("other")
+			other.Routes = profile.Routes{Mode: "gateway"}
+			secondEffect, second := configuredNative(t, m, other, 1)
+			baseline := slices.Clone(r.base.routes)
 			first.GatewayIP = "203.0.113.5"
 			if err := m.Apply(context.Background(), full, e, &first, ignoreJournal); err != nil {
 				t.Fatal(err)
 			}
-			other := nativeProfile("other")
-			other.Routes = profile.Routes{Mode: "gateway"}
-			secondEffect, second := configuredNative(t, m, other, 1)
-			baseline := []JournalRoute{r.base.routes[0], r.base.routes[1], r.base.routes[len(r.base.routes)-1]}
 			secondEffect.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}
 			second.GatewayIP = first.GatewayIP
 			if err := m.Apply(context.Background(), other, secondEffect, &second, ignoreJournal); err != nil {
@@ -195,6 +196,7 @@ func TestNativeFullWithSplits(t *testing.T) {
 
 // TestGatewayRecovery rebuilds shared references before startup cleanup. The physical
 // exception survives until all recorded native routes have been removed, in either order.
+// Distinct endpoints are configured before either attempt installs covering routes.
 func TestGatewayRecovery(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
 		for _, reverse := range []bool{false, true} {
@@ -203,13 +205,13 @@ func TestGatewayRecovery(t *testing.T) {
 				full := nativeProfile("work")
 				full.Routes = profile.Routes{Mode: "full"}
 				e, first := configuredNative(t, m, full, 0)
+				other := nativeProfile("other")
+				other.Routes = profile.Routes{Mode: "gateway"}
+				secondEffect, second := configuredNative(t, m, other, 1)
 				first.GatewayIP = "203.0.113.5"
 				if err := m.Apply(context.Background(), full, e, &first, ignoreJournal); err != nil {
 					t.Fatal(err)
 				}
-				other := nativeProfile("other")
-				other.Routes = profile.Routes{Mode: "gateway"}
-				secondEffect, second := configuredNative(t, m, other, 1)
 				secondEffect.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix("203.0.113.0/24")}
 				second.GatewayIP = first.GatewayIP
 				if err := m.Apply(context.Background(), other, secondEffect, &second, ignoreJournal); err != nil {

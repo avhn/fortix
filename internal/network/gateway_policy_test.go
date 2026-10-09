@@ -59,6 +59,7 @@ func TestNativeGatewayExceptionPolicy(t *testing.T) {
 // TestUnrelatedSplitDoesNotShareGateway verifies a split tunnel has no lease on a
 // full tunnel's exception when none of its routes cover the TLS peer. Stopping the
 // full tunnel releases that host route while the unrelated split remains active.
+// Both links configure distinct endpoints before the full tunnel installs routes.
 func TestUnrelatedSplitDoesNotShareGateway(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
 		t.Run(platform, func(t *testing.T) {
@@ -66,13 +67,13 @@ func TestUnrelatedSplitDoesNotShareGateway(t *testing.T) {
 			full := nativeProfile("work")
 			full.Routes = profile.Routes{Mode: "full"}
 			e, first := configuredNative(t, m, full, 0)
+			other := nativeProfile("other")
+			other.Routes = profile.Routes{Mode: "gateway"}
+			secondEffect, second := configuredNative(t, m, other, 1)
 			first.GatewayIP = "203.0.113.5"
 			if err := m.Apply(context.Background(), full, e, &first, ignoreJournal); err != nil {
 				t.Fatal(err)
 			}
-			other := nativeProfile("other")
-			other.Routes = profile.Routes{Mode: "gateway"}
-			secondEffect, second := configuredNative(t, m, other, 1)
 			secondEffect.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix("10.40.0.0/16")}
 			second.GatewayIP = first.GatewayIP
 			if err := m.Apply(context.Background(), other, secondEffect, &second, ignoreJournal); err != nil {

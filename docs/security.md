@@ -80,7 +80,15 @@ download source do not defend against compromise of that source.
 The macOS app copies helper inputs from `Contents/Resources/libexec` after one
 explicit administrator prompt with a selected desktop `--user`. The runtime
 service executes root-owned copies, never a helper left inside a writable app
-bundle. No openfortivpn is bundled. Adding the optional backend is a separate
+bundle. The installation step itself trusts the bundle it runs from: the
+administrator prompt executes the bundled helper as root, so anything able to
+modify `Fortix.app` before that prompt (for example malware running as the same
+user) can also replace what gets installed. Source files are opened without
+following symlinks and copied from the verified open descriptor, which closes
+swap races during the copy but cannot establish publisher identity. Only a
+Developer ID signature with a pinned team requirement would; until then, install
+from a DMG whose checksum you verified and copy it straight to `/Applications`.
+No openfortivpn is bundled. Adding the optional backend is a separate
 privileged action, not an implicit fallback. The app is not Developer ID signed
 or notarized; use Gatekeeper's per-app **Open Anyway** only after verifying
 provenance, never a global disablement.
@@ -175,6 +183,11 @@ flowchart LR
 Custom routes are checked against active/configured routes, existing routes,
 and connected subnets. Duplicate negotiated IPv4 addresses and conflicting full
 tunnels are rejected. Native journals its link identity before configuration and
+checks both negotiated endpoints before persisting address intent or configuring
+the link. Equal endpoints, connected-network collisions, the TLS gateway address,
+other tunnels' reserved prefixes or endpoints, and live non-default routes report
+`CONFLICT`. Only the same registered link's verified, identical peer `/32` is
+exempt during a configuration retry, including partial Linux activation. Native
 reserves negotiated destinations before route mutation. The helper verifies the
 kernel link and negotiated local IP before applying routes or split DNS;
 mismatches report `INTERFACE_MISMATCH`. Openfortivpn route-failure observations

@@ -116,6 +116,8 @@ func tunnelAddress(ip netip.Addr) bool {
 // effect must match a registered native link and provide usable IPv4 endpoints and
 // an IPv4 MTU (68 through 65535). Commands use fixed trusted executables, never a
 // shell. Repeated identical calls verify kernel state without duplicating commands.
+// Endpoints must not overlap connected networks, other reservations, the TLS gateway
+// or live non-default routes. Only a verified identical retry may reuse its peer /32.
 // Successful configuration retains the peer for connected-route conflict checks.
 // The transport owns device closure; this manager never deletes a native device.
 func (m *Manager) ConfigureNative(ctx context.Context, effect session.Effect, j *Journal, persist func(Journal) error) error {
@@ -132,17 +134,16 @@ func (m *Manager) ConfigureNative(ctx context.Context, effect session.Effect, j 
 	if j.LocalIP != "" && (j.LocalIP != effect.LocalIP.String() || j.PeerIP != effect.PeerIP.String() || j.MTU != effect.MTU) {
 		return errors.New("native link configuration changed within an attempt")
 	}
-	m.mu.Lock()
-	current := m.active[effect.Profile]
-	if err := m.addresses(effect.Profile, effect.LocalIP); err != nil {
-		m.mu.Unlock()
+	addressApplied := j.LocalIP == effect.LocalIP.String() && m.verifyInterface(effect.Interface, effect.LocalIP) == nil
+	if err := m.reserveNativeAddresses(ctx, effect, *j, addressApplied); err != nil {
 		return err
 	}
+	m.mu.Lock()
+	current := m.active[effect.Profile]
 	m.mu.Unlock()
 	if current.configured {
 		return m.registeredLink(effect, *j, true)
 	}
-	addressApplied := j.LocalIP == effect.LocalIP.String() && m.verifyInterface(effect.Interface, effect.LocalIP) == nil
 	updated := *j
 	updated.LocalIP, updated.PeerIP, updated.MTU = effect.LocalIP.String(), effect.PeerIP.String(), effect.MTU
 	if err := persist(updated); err != nil {
@@ -178,6 +179,76 @@ func (m *Manager) ConfigureNative(ctx context.Context, effect session.Effect, j 
 	m.active[effect.Profile] = current
 	m.mu.Unlock()
 	return ctx.Err()
+}
+
+// reserveNativeAddresses checks registered effect endpoints before reserving the local
+// address or allowing journal and host mutations. Discovery failures propagate; LAN,
+// gateway, active-tunnel and live-route collisions return ConflictError. The caller
+// holds the transaction gate and has checked j for an identical configuration intent.
+// addressApplied proves that intent's local address is present on the registered link,
+// allowing only its connected peer /32 during complete or partial configuration retries.
+func (m *Manager) reserveNativeAddresses(ctx context.Context, effect session.Effect, j Journal, addressApplied bool) error {
+	if effect.LocalIP == effect.PeerIP {
+		return &ConflictError{"native local and peer addresses must differ"}
+	}
+	gateway, _ := netip.ParseAddr(j.GatewayIP)
+	endpoints := []netip.Addr{effect.LocalIP, effect.PeerIP}
+	for _, endpoint := range endpoints {
+		if endpoint == gateway {
+			return &ConflictError{"native endpoint conflicts with the TLS gateway"}
+		}
+	}
+	subnets, err := m.subnets()
+	if err != nil {
+		return errors.New("connected interface discovery failed")
+	}
+	routes, err := m.reservationRoutes(ctx)
+	if err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	current := m.active[effect.Profile]
+	// A partial Linux activation has durable address intent but no configured flag yet.
+	// This temporary identity permits retry, without granting route ownership or changing
+	// the active peer reservation before configuration has actually succeeded.
+	if addressApplied {
+		current.configured, current.localIP, current.peerIP = true, effect.LocalIP, effect.PeerIP
+	}
+	for _, endpoint := range endpoints {
+		for _, subnet := range subnets {
+			if subnet.Interface != effect.Interface && subnet.Prefix.Contains(endpoint) {
+				return &ConflictError{"native endpoint overlaps a connected interface"}
+			}
+		}
+		for id, other := range m.active {
+			if id == effect.Profile {
+				continue
+			}
+			if endpoint == other.localIP || endpoint == other.peerIP {
+				return &ConflictError{"native endpoint is already used by another active tunnel"}
+			}
+			for _, prefix := range reservationPrefixes(other) {
+				if prefix.Contains(endpoint) {
+					return &ConflictError{"native endpoint overlaps another active reservation"}
+				}
+			}
+		}
+		for _, route := range routes {
+			prefix := netip.MustParsePrefix(route.CIDR)
+			if prefix.Bits() == 0 || !prefix.Contains(endpoint) {
+				continue
+			}
+			if addressApplied && endpoint == effect.PeerIP && connectedPeerRoute(current, route) {
+				continue
+			}
+			return &ConflictError{"native endpoint is covered by an existing route"}
+		}
+	}
+	return m.addresses(effect.Profile, effect.LocalIP)
 }
 
 // nativeLinkPresent proves a recorded native link still has its kernel index and IP.
