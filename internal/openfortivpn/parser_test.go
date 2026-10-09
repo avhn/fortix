@@ -99,6 +99,76 @@ func TestLineClassification(t *testing.T) {
 	}
 }
 
+// TestRouteRejections distinguishes route collisions, ordinary installation errors,
+// successful adds, unrelated diagnostics, and the benign VPN server host exception.
+func TestRouteRejections(t *testing.T) {
+	cases := []struct {
+		line   string
+		reason RouteRejectReason
+		prefix string
+	}{
+		{"INFO:   Route to gateway exists already.", RouteConflict, ""},
+		{"WARN:   Route to gateway exists already.", RouteConflict, ""},
+		{"route: writing to routing socket: File exists", "", ""},
+		{"WARN:   route: writing to routing socket: File exists", "", ""},
+		{"add net 10.20.0.0/16: gateway ppp0: File exists", RouteConflict, "10.20.0.0/16"},
+		{"add host 203.0.113.5: gateway 192.0.2.1: File exists", "", ""},
+		{"add net 203.0.113.5: gateway ppp0: File exists", RouteConflict, ""},
+		{"RTNETLINK answers: File exists", RouteConflict, ""},
+		{"SIOCADDRT: File exists", RouteConflict, ""},
+		{"SIOCADDRT: Network is unreachable", RouteFailed, ""},
+		{"ERROR:  /sbin/route: No such file or directory.", RouteFailed, ""},
+		{"WARN:   Could not set route to tunnel gateway (File exists).", RouteConflict, ""},
+		{"WARN:   Could not set route to tunnel gateway (Permission denied).", RouteFailed, ""},
+		{"WARN:   Could not set route to vpn server (Network is unreachable).", "", ""},
+		{"WARN:   Could not set route to vpn server (File exists).", "", ""},
+		{"ERROR:  Failed to add route 10.20.1.0/16: Network is unreachable", RouteFailed, "10.20.0.0/16"},
+		{"ERROR:  Could not add route 10.20.0.0/16: Operation not permitted", RouteFailed, "10.20.0.0/16"},
+		{"route: writing to routing socket: Network is unreachable", "", ""},
+		{"add net 10.20.0.0/16: gateway ppp0: Network is unreachable", RouteFailed, "10.20.0.0/16"},
+		{"WARN:   Default route exists already.", RouteConflict, ""},
+		{"WARN:   0.0.0.0/1 route exists already.", RouteConflict, "0.0.0.0/1"},
+		{"WARN:   Could not set the new 128.0.0.0/1 route (Permission denied).", RouteFailed, "128.0.0.0/1"},
+		{"WARN:   Could not set the new default route (Permission denied).", RouteFailed, ""},
+		{"WARN:   Route to vpn server exists already.", "", ""},
+		{"INFO:   Route to vpn server exists already.", "", ""},
+		{"add net 10.20.0.0: gateway ppp0", "", ""},
+		{"delete net 10.20.0.0: gateway ppp0: File exists", "", ""},
+		{"SIOCDELRT: No such process", "", ""},
+		{"WARN:   Could not delete route to vpn server (No such process).", "", ""},
+		{"DEBUG:  /sbin/route -n add -net 10.20.0.0 -netmask 255.255.0.0 -interface ppp0", "", ""},
+		{"ERROR:  File exists", "", ""},
+		{"pppd: File exists", "", ""},
+		{"File exists", "", ""},
+		{"INFO:  Route to gateway exists already.", "", ""},
+		{"WARN:   Could not set route " + strings.Repeat("x", maxOutputLine), "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.line[:min(len(tc.line), 100)], func(t *testing.T) {
+			var parser Parser
+			events := parser.Parse(tc.line + "\r\n")
+			if len(events) != 1 {
+				t.Fatalf("observations: %#v", events)
+			}
+			if tc.reason == "" {
+				if got, ok := events[0].(Unknown); !ok || got.Line != tc.line {
+					t.Fatalf("diagnostic became a failure: %#v", events)
+				}
+				return
+			}
+			got, ok := events[0].(RouteRejected)
+			_, text := splitPrefix(tc.line)
+			var prefix netip.Prefix
+			if tc.prefix != "" {
+				prefix = netip.MustParsePrefix(tc.prefix)
+			}
+			if !ok || got.Reason != tc.reason || got.Prefix != prefix || got.Message != text {
+				t.Fatalf("rejection: %#v", events)
+			}
+		})
+	}
+}
+
 // TestGatewaySuffixes preserves tunnel addresses when an unvalidated gateway suffix
 // contains brackets, controls, or invalid DNS text. Valid suffixes retain their spelling;
 // controls are stripped and invalid names degrade to an empty suffix without failure.
@@ -175,6 +245,9 @@ func FuzzParser(f *testing.F) {
 		}
 		f.Add(string(data))
 	}
+	f.Add("INFO:   Route to gateway exists already.")
+	f.Add("route: writing to routing socket: File exists\nadd net 10.20.0.0/16: gateway ppp0: File exists")
+	f.Add("WARN:   Could not set route to tunnel gateway (Permission denied).")
 	f.Add("INFO:   Got addresses: [bad], ns [bad]")
 	f.Add("INFO:   Got addresses: [10.20.0.10], ns [10.20.0.1, 0.0.0.0], ns_suffix [corp[example].com]")
 	f.Add("INFO:   Got addresses: [10.20.0.10], ns [], ns_suffix [corp\x00\r.example.com]")

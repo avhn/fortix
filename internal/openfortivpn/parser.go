@@ -24,13 +24,13 @@ const (
 var addressLine = regexp.MustCompile(`^Got addresses: \[([^\[\]]+)\], ns \[([^\[\]]*)\](?:, ns_suffix \[((?s:.*))\])?$`)
 
 // Parser retains only a bounded certificate block between Parse calls.
-// Its zero value is ready for one stdout stream; separate attempts need separate parsers.
+// Its zero value is ready for one output stream; streams and attempts need separate parsers.
 type Parser struct {
 	cert    *CertRejected
 	section string
 }
 
-// Parse classifies one stdout line, emitting zero or more typed observations.
+// Parse classifies one stdout or stderr line, emitting zero or more typed observations.
 // It accepts an optional LF or CRLF terminator. Exact severity spacing is required.
 // Certificate lines accumulate until the final digest or a block boundary; unknown
 // lines are preserved. It does no I/O and reports malformed data as Unknown.
@@ -60,7 +60,7 @@ func (p *Parser) Parse(line string) []Event {
 }
 
 // Flush emits an unfinished certificate rejection and clears its bounded state.
-// Call it at stdout EOF. It returns nil if no block is pending and cannot fail.
+// Call it at stream EOF. It returns nil if no block is pending and cannot fail.
 func (p *Parser) Flush() []Event {
 	if p.cert == nil {
 		return nil
@@ -81,9 +81,12 @@ func splitPrefix(line string) (level, text string) {
 	return "", line
 }
 
-// classify returns one observation for an already split stdout line.
-// Only known messages at their expected severity become state-changing observations.
+// classify returns one observation for an already split output line.
+// Known route-tool errors can be unprefixed; other milestones require their severity.
 func classify(level, text, line string) Event {
+	if rejection, ok := routeRejection(level, text); ok {
+		return rejection
+	}
 	if level == "INFO" {
 		switch text {
 		case "Connected to gateway.":
@@ -122,6 +125,54 @@ func classify(level, text, line string) Event {
 		}
 	}
 	return Unknown{Line: line}
+}
+
+// routeRejection recognizes installation diagnostics and route-tool failures.
+// Successful adds, protection-route diagnostics, and deletions remain unknown.
+// macOS split-route failures are attributable only through their add-net output;
+// routing-socket diagnostics also accompany harmless protection-route collisions.
+// level is the parsed severity, or empty for route-tool output. A missing destination
+// stays an invalid Prefix rather than guessing a route from another stream's log.
+func routeRejection(level, text string) (RouteRejected, bool) {
+	if text == "Route to vpn server exists already." || strings.HasPrefix(text, "Could not set route to vpn server") {
+		return RouteRejected{}, false
+	}
+	lower := strings.ToLower(text)
+	known := false
+	if level == "INFO" || level == "WARN" || level == "ERROR" {
+		known = text == "Route to gateway exists already." || text == "Default route exists already." ||
+			text == "0.0.0.0/1 route exists already." || text == "128.0.0.0/1 route exists already."
+		for _, prefix := range []string{"could not set route", "could not set the new ", "could not add route", "failed to add route", "failed to set route", "route add failed"} {
+			if strings.HasPrefix(lower, prefix) && strings.Contains(lower, "route") {
+				known = true
+			}
+		}
+	}
+	if level == "WARN" || level == "ERROR" {
+		known = known || strings.HasPrefix(lower, "/sbin/route: ")
+	}
+	if level == "" || level == "WARN" || level == "ERROR" {
+		known = known || strings.HasPrefix(lower, "rtnetlink answers: ") || strings.HasPrefix(lower, "siocaddrt: ")
+		if strings.HasPrefix(lower, "add net ") {
+			// Successful route output ends at the gateway; failures append a diagnostic.
+			_, diagnostic, found := strings.Cut(strings.TrimPrefix(lower, "add "), ": gateway ")
+			known = known || (found && strings.Contains(diagnostic, ": "))
+		}
+	}
+	if !known {
+		return RouteRejected{}, false
+	}
+	rejection := RouteRejected{Reason: RouteFailed, Message: text}
+	if strings.Contains(lower, "file exists") || strings.Contains(lower, "exists already") {
+		rejection.Reason = RouteConflict
+	}
+	for word := range strings.FieldsSeq(text) {
+		if prefix, err := netip.ParsePrefix(strings.Trim(word, ":,().[]")); err == nil && prefix.Addr().Is4() {
+			rejection.Prefix = prefix.Masked()
+			break
+		}
+	}
+	return rejection, true
 }
 
 // parseAddresses extracts well-formed unscoped IPv4 addresses and an optional suffix.

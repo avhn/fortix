@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,7 +18,38 @@ import (
 	"github.com/avhn/fortix/internal/session"
 )
 
+// stopGateNetwork delays only an explicitly armed teardown without host networking.
+// Embedding NoNetwork preserves no-op configuration and recovery for trust attempts.
+type stopGateNetwork struct {
+	helper.NoNetwork
+	armed   atomic.Bool
+	entered chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+// Teardown acknowledges the cleanup phase, then waits for test release or its deadline.
+func (n *stopGateNetwork) Teardown(ctx context.Context, _ helper.Journal) error {
+	if !n.armed.Load() {
+		return nil
+	}
+	select {
+	case n.entered <- struct{}{}:
+	default:
+	}
+	select {
+	case <-n.release:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// unblock allows teardown to complete exactly once, including failed-test cleanup.
+func (n *stopGateNetwork) unblock() { n.once.Do(func() { close(n.release) }) }
+
 // TestRealHelperTrust drives certificate rejection, recapture, pinning, and password delivery.
+// A profile replacement immediately after down proves exit and cleanup were acknowledged.
 // All sockets and files are temporary; the fake VPN never changes routes or opens a gateway connection.
 func TestRealHelperTrust(t *testing.T) {
 	if os.Geteuid() == 0 {
@@ -48,7 +81,8 @@ func TestRealHelperTrust(t *testing.T) {
 			t.Fatalf("fixture build: %v: %s", err, output)
 		}
 	}
-	server, err := helper.New(helper.Options{Paths: p, Network: helper.NoNetwork{}, Authorize: func(peer helper.Peer) error {
+	network := &stopGateNetwork{entered: make(chan struct{}, 1), release: make(chan struct{})}
+	server, err := helper.New(helper.Options{Paths: p, Network: network, Authorize: func(peer helper.Peer) error {
 		if peer.UID != uint32(os.Geteuid()) {
 			return os.ErrPermission
 		}
@@ -71,6 +105,7 @@ func TestRealHelperTrust(t *testing.T) {
 			t.Error("helper shutdown timed out")
 		}
 	})
+	t.Cleanup(network.unblock)
 	deadline := time.NewTimer(3 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(5 * time.Millisecond)
@@ -113,8 +148,47 @@ func TestRealHelperTrust(t *testing.T) {
 		{[]string{"up", "work"}, 0, "work: connected"},
 		{[]string{"profile", "show", "work"}, 0, `"trusted_cert": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`},
 		{[]string{"down", "--all"}, 0, ""},
+		{[]string{"profile", "add", profilePath}, 0, ""},
 	} {
-		code, out, diag := runCommand(t, step.args, options)
+		var code int
+		var out, diag string
+		if step.args[0] == "down" {
+			network.armed.Store(true)
+			// The short observation window lets an incorrectly early CLI return
+			// reach the result channel while network cleanup remains blocked.
+			const observationWindow = 25 * time.Millisecond
+			// result transfers captured CLI output after the invocation finishes.
+			type result struct {
+				code      int
+				out, diag string
+			}
+			completed := make(chan result, 1)
+			go func() {
+				code, out, diag := runCommand(t, step.args, options)
+				completed <- result{code, out, diag}
+			}()
+			select {
+			case <-network.entered:
+			case early := <-completed:
+				t.Fatalf("down returned before cleanup: %#v", early)
+			case <-time.After(time.Second):
+				t.Fatal("down did not reach cleanup")
+			}
+			select {
+			case early := <-completed:
+				t.Fatalf("down returned during cleanup: %#v", early)
+			case <-time.After(observationWindow):
+			}
+			network.unblock()
+			select {
+			case finished := <-completed:
+				code, out, diag = finished.code, finished.out, finished.diag
+			case <-time.After(2 * time.Second):
+				t.Fatal("down did not acknowledge cleanup")
+			}
+		} else {
+			code, out, diag = runCommand(t, step.args, options)
+		}
 		if code != step.code || !strings.Contains(out+diag, step.want) {
 			t.Fatalf("%v: code %d output %s diagnostics %s", step.args, code, out, diag)
 		}

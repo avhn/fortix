@@ -318,25 +318,7 @@ func (r *runner) execute(c command) error {
 	case "profile rm":
 		return r.call(protocol.Request{Op: "profile.delete", Profile: c.ids[0]}, nil)
 	case "down":
-		if c.all {
-			var entries []profileState
-			if err := r.call(protocol.Request{Op: "profile.list"}, &entries); err != nil {
-				return err
-			}
-			if len(entries) == 0 {
-				if _, err := fmt.Fprintln(r.errout, "no profiles"); err != nil {
-					return err
-				}
-			}
-			return r.call(protocol.Request{Op: "down", All: true}, nil)
-		}
-		var failures []error
-		for _, id := range c.ids {
-			if err := r.call(protocol.Request{Op: "down", Profile: id}, nil); err != nil {
-				failures = append(failures, fmt.Errorf("%s: %w", id, err))
-			}
-		}
-		return errors.Join(failures...)
+		return r.down(c)
 	case "logs":
 		var lines []string
 		if err := r.call(protocol.Request{Op: "logs", Profile: c.ids[0], Lines: c.lines}, &lines); err != nil {

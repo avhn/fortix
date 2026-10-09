@@ -342,8 +342,13 @@ func TestHelperCommands(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			calls := 0
 			socket := fakeSocket(t, func(req protocol.Request) (any, []protocol.Event, *protocol.Error) {
-				if tc.name == "down all" && req.Op == "profile.list" {
-					return []profileState{{Profile: "work"}}, nil, nil
+				if strings.HasPrefix(tc.name, "down ") {
+					switch req.Op {
+					case "subscribe":
+						return nil, nil, nil
+					case "status":
+						return []statusEntry{{Profile: "work", State: "disconnected"}}, nil, nil
+					}
 				}
 				calls++
 				if req.Op != tc.op {
