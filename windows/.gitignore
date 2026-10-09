@@ -1,0 +1,5 @@
+# .NET build output for every project in this directory.
+bin/
+obj/
+*.user
+TestResults/

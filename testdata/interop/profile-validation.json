@@ -1,0 +1,1556 @@
+[
+  {
+    "name": "minimal",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "full-native",
+    "input": "{\"backend\":\"native\",\"dns\":{\"domains\":[\"corp.example.com\",\"example.org\"],\"mode\":\"split\"},\"gateway\":{\"host\":\"vpn.example.com\",\"port\":10443},\"id\":\"work\",\"name\":\"Work\",\"realm\":\"Corp_1.a-b\",\"routes\":{\"exclude\":[\"198.51.100.0/24\",\"203.0.113.0/25\"],\"mode\":\"full\",\"preserve_lan\":false},\"schema_version\":1,\"trusted_cert\":\"AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB:AB\",\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 10443
+      },
+      "realm": "Corp_1.a-b",
+      "username": "alice",
+      "trusted_cert": "abababababababababababababababababababababababababababababababab",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "full",
+        "exclude": [
+          "198.51.100.0/24",
+          "203.0.113.0/25"
+        ],
+        "preserve_lan": false
+      },
+      "dns": {
+        "mode": "split",
+        "domains": [
+          "corp.example.com",
+          "example.org"
+        ]
+      }
+    }
+  },
+  {
+    "name": "totp-defaults",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"mode\":\"totp\"},\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "openfortivpn",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "totp",
+        "digits": 6,
+        "period": 30,
+        "algorithm": "SHA1"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "totp-explicit",
+    "input": "{\"backend\":\"openfortivpn\",\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"algorithm\":\"SHA512\",\"digits\":8,\"mode\":\"totp\",\"period\":120},\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "openfortivpn",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "totp",
+        "digits": 8,
+        "period": 120,
+        "algorithm": "SHA512"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "push",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"mode\":\"push\"},\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "openfortivpn",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "push"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "custom-routes",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"include\":[\"10.0.0.0/8\",\"192.0.2.0/24\",\"198.51.100.7/32\"],\"mode\":\"custom\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "custom",
+        "include": [
+          "10.0.0.0/8",
+          "192.0.2.0/24",
+          "198.51.100.7/32"
+        ],
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "ipv4-gateway",
+    "input": "{\"gateway\":{\"host\":\"192.0.2.10\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "192.0.2.10",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "ipv6-gateway",
+    "input": "{\"gateway\":{\"host\":\"2001:db8::1\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "2001:db8::1",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "ipv6-unspecified",
+    "input": "{\"gateway\":{\"host\":\"::\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "::",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "ipv6-mapped",
+    "input": "{\"gateway\":{\"host\":\"::ffff:192.0.2.1\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "::ffff:192.0.2.1",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "ipv6-embedded",
+    "input": "{\"gateway\":{\"host\":\"64:ff9b::192.0.2.33\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "64:ff9b::192.0.2.33",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "ipv6-full",
+    "input": "{\"gateway\":{\"host\":\"2001:0db8:0000:0000:0000:ff00:0042:8329\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "2001:0db8:0000:0000:0000:ff00:0042:8329",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "ipv6-trailing-ellipsis",
+    "input": "{\"gateway\":{\"host\":\"1:2:3:4:5:6:7::\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "1:2:3:4:5:6:7::",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "leading-zero-ipv4-is-hostname",
+    "input": "{\"gateway\":{\"host\":\"192.0.2.010\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "192.0.2.010",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "uppercase-host",
+    "input": "{\"gateway\":{\"host\":\"VPN.Example.COM\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "VPN.Example.COM",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "unicode-text",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Büro 東京\",\"schema_version\":1,\"username\":\"İpek.東京\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Büro 東京",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "İpek.東京",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "explicit-zero-port",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\",\"port\":0},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "max-lengths",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"name\":\"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn\",\"realm\":\"rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr\",\"schema_version\":1,\"username\":\"uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "abbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "name": "nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "realm": "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr",
+      "username": "uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "exclude-limit",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"exclude\":[\"10.0.0.0/24\",\"10.0.1.0/24\",\"10.0.2.0/24\",\"10.0.3.0/24\",\"10.0.4.0/24\",\"10.0.5.0/24\",\"10.0.6.0/24\",\"10.0.7.0/24\",\"10.0.8.0/24\",\"10.0.9.0/24\",\"10.0.10.0/24\",\"10.0.11.0/24\",\"10.0.12.0/24\",\"10.0.13.0/24\",\"10.0.14.0/24\",\"10.0.15.0/24\",\"10.0.16.0/24\",\"10.0.17.0/24\",\"10.0.18.0/24\",\"10.0.19.0/24\",\"10.0.20.0/24\",\"10.0.21.0/24\",\"10.0.22.0/24\",\"10.0.23.0/24\",\"10.0.24.0/24\",\"10.0.25.0/24\",\"10.0.26.0/24\",\"10.0.27.0/24\",\"10.0.28.0/24\",\"10.0.29.0/24\",\"10.0.30.0/24\",\"10.0.31.0/24\",\"10.0.32.0/24\",\"10.0.33.0/24\",\"10.0.34.0/24\",\"10.0.35.0/24\",\"10.0.36.0/24\",\"10.0.37.0/24\",\"10.0.38.0/24\",\"10.0.39.0/24\",\"10.0.40.0/24\",\"10.0.41.0/24\",\"10.0.42.0/24\",\"10.0.43.0/24\",\"10.0.44.0/24\",\"10.0.45.0/24\",\"10.0.46.0/24\",\"10.0.47.0/24\",\"10.0.48.0/24\",\"10.0.49.0/24\",\"10.0.50.0/24\",\"10.0.51.0/24\",\"10.0.52.0/24\",\"10.0.53.0/24\",\"10.0.54.0/24\",\"10.0.55.0/24\",\"10.0.56.0/24\",\"10.0.57.0/24\",\"10.0.58.0/24\",\"10.0.59.0/24\",\"10.0.60.0/24\",\"10.0.61.0/24\",\"10.0.62.0/24\",\"10.0.63.0/24\"],\"mode\":\"gateway\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "exclude": [
+          "10.0.0.0/24",
+          "10.0.1.0/24",
+          "10.0.2.0/24",
+          "10.0.3.0/24",
+          "10.0.4.0/24",
+          "10.0.5.0/24",
+          "10.0.6.0/24",
+          "10.0.7.0/24",
+          "10.0.8.0/24",
+          "10.0.9.0/24",
+          "10.0.10.0/24",
+          "10.0.11.0/24",
+          "10.0.12.0/24",
+          "10.0.13.0/24",
+          "10.0.14.0/24",
+          "10.0.15.0/24",
+          "10.0.16.0/24",
+          "10.0.17.0/24",
+          "10.0.18.0/24",
+          "10.0.19.0/24",
+          "10.0.20.0/24",
+          "10.0.21.0/24",
+          "10.0.22.0/24",
+          "10.0.23.0/24",
+          "10.0.24.0/24",
+          "10.0.25.0/24",
+          "10.0.26.0/24",
+          "10.0.27.0/24",
+          "10.0.28.0/24",
+          "10.0.29.0/24",
+          "10.0.30.0/24",
+          "10.0.31.0/24",
+          "10.0.32.0/24",
+          "10.0.33.0/24",
+          "10.0.34.0/24",
+          "10.0.35.0/24",
+          "10.0.36.0/24",
+          "10.0.37.0/24",
+          "10.0.38.0/24",
+          "10.0.39.0/24",
+          "10.0.40.0/24",
+          "10.0.41.0/24",
+          "10.0.42.0/24",
+          "10.0.43.0/24",
+          "10.0.44.0/24",
+          "10.0.45.0/24",
+          "10.0.46.0/24",
+          "10.0.47.0/24",
+          "10.0.48.0/24",
+          "10.0.49.0/24",
+          "10.0.50.0/24",
+          "10.0.51.0/24",
+          "10.0.52.0/24",
+          "10.0.53.0/24",
+          "10.0.54.0/24",
+          "10.0.55.0/24",
+          "10.0.56.0/24",
+          "10.0.57.0/24",
+          "10.0.58.0/24",
+          "10.0.59.0/24",
+          "10.0.60.0/24",
+          "10.0.61.0/24",
+          "10.0.62.0/24",
+          "10.0.63.0/24"
+        ],
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "split-limit",
+    "input": "{\"dns\":{\"domains\":[\"d0.example.com\",\"d1.example.com\",\"d2.example.com\",\"d3.example.com\",\"d4.example.com\",\"d5.example.com\",\"d6.example.com\",\"d7.example.com\",\"d8.example.com\",\"d9.example.com\",\"d10.example.com\",\"d11.example.com\",\"d12.example.com\",\"d13.example.com\",\"d14.example.com\",\"d15.example.com\",\"d16.example.com\",\"d17.example.com\",\"d18.example.com\",\"d19.example.com\",\"d20.example.com\",\"d21.example.com\",\"d22.example.com\",\"d23.example.com\",\"d24.example.com\",\"d25.example.com\",\"d26.example.com\",\"d27.example.com\",\"d28.example.com\",\"d29.example.com\",\"d30.example.com\",\"d31.example.com\"],\"mode\":\"split\"},\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "split",
+        "domains": [
+          "d0.example.com",
+          "d1.example.com",
+          "d2.example.com",
+          "d3.example.com",
+          "d4.example.com",
+          "d5.example.com",
+          "d6.example.com",
+          "d7.example.com",
+          "d8.example.com",
+          "d9.example.com",
+          "d10.example.com",
+          "d11.example.com",
+          "d12.example.com",
+          "d13.example.com",
+          "d14.example.com",
+          "d15.example.com",
+          "d16.example.com",
+          "d17.example.com",
+          "d18.example.com",
+          "d19.example.com",
+          "d20.example.com",
+          "d21.example.com",
+          "d22.example.com",
+          "d23.example.com",
+          "d24.example.com",
+          "d25.example.com",
+          "d26.example.com",
+          "d27.example.com",
+          "d28.example.com",
+          "d29.example.com",
+          "d30.example.com",
+          "d31.example.com"
+        ]
+      }
+    }
+  },
+  {
+    "name": "empty-object",
+    "input": "{}",
+    "errors": [
+      {
+        "field": "schema_version",
+        "message": "must be 1"
+      },
+      {
+        "field": "id",
+        "message": "must match ^[a-z0-9][a-z0-9-]{0,62}$"
+      },
+      {
+        "field": "name",
+        "message": "must be 1..64 characters with no control characters"
+      },
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      },
+      {
+        "field": "username",
+        "message": "must be 1..256 characters without controls or whitespace at ends"
+      }
+    ]
+  },
+  {
+    "name": "schema-version",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":2,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "schema_version",
+        "message": "must be 1"
+      }
+    ]
+  },
+  {
+    "name": "id-uppercase",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"Work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "id",
+        "message": "must match ^[a-z0-9][a-z0-9-]{0,62}$"
+      }
+    ]
+  },
+  {
+    "name": "id-hyphen-start",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"-work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "id",
+        "message": "must match ^[a-z0-9][a-z0-9-]{0,62}$"
+      }
+    ]
+  },
+  {
+    "name": "id-too-long",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "id",
+        "message": "must match ^[a-z0-9][a-z0-9-]{0,62}$"
+      }
+    ]
+  },
+  {
+    "name": "name-empty",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "name",
+        "message": "must be 1..64 characters with no control characters"
+      }
+    ]
+  },
+  {
+    "name": "name-too-long",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"nnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnnn\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "name",
+        "message": "must be 1..64 characters with no control characters"
+      }
+    ]
+  },
+  {
+    "name": "name-control",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\\u0007\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "name",
+        "message": "must be 1..64 characters with no control characters"
+      }
+    ]
+  },
+  {
+    "name": "name-c1-control",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "name",
+        "message": "must be 1..64 characters with no control characters"
+      }
+    ]
+  },
+  {
+    "name": "backend-unknown",
+    "input": "{\"backend\":\"wireguard\",\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "backend",
+        "message": "must be native or openfortivpn"
+      }
+    ]
+  },
+  {
+    "name": "native-with-mfa",
+    "input": "{\"backend\":\"native\",\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"mode\":\"push\"},\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "backend",
+        "message": "native requires mfa.mode none; use openfortivpn for second factors"
+      }
+    ]
+  },
+  {
+    "name": "host-scheme",
+    "input": "{\"gateway\":{\"host\":\"https://vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-port",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com:443\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-zone",
+    "input": "{\"gateway\":{\"host\":\"fe80::1%eth0\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-bracketed",
+    "input": "{\"gateway\":{\"host\":\"[2001:db8::1]\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-empty-label",
+    "input": "{\"gateway\":{\"host\":\"vpn..example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-trailing-dot",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com.\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-hyphen-label",
+    "input": "{\"gateway\":{\"host\":\"-vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-underscore",
+    "input": "{\"gateway\":{\"host\":\"vpn_1.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-long-label",
+    "input": "{\"gateway\":{\"host\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-too-long",
+    "input": "{\"gateway\":{\"host\":\"a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.ab\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-double-ellipsis",
+    "input": "{\"gateway\":{\"host\":\"1::2::3\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-too-many-groups",
+    "input": "{\"gateway\":{\"host\":\"1:2:3:4:5:6:7:8:9\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-full-with-ellipsis",
+    "input": "{\"gateway\":{\"host\":\"1:2:3:4:5:6:7:8::\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-five-digit-group",
+    "input": "{\"gateway\":{\"host\":\"12345::\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-unicode",
+    "input": "{\"gateway\":{\"host\":\"bücher.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "host-empty",
+    "input": "{\"gateway\":{\"host\":\"\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      }
+    ]
+  },
+  {
+    "name": "port-high",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\",\"port\":65536},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.port",
+        "message": "must be 1..65535"
+      }
+    ]
+  },
+  {
+    "name": "port-negative",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\",\"port\":-1},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "gateway.port",
+        "message": "must be 1..65535"
+      }
+    ]
+  },
+  {
+    "name": "realm-space",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"realm\":\"corp realm\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "realm",
+        "message": "must be at most 64 characters from A-Z, a-z, 0-9, dot, underscore, or hyphen"
+      }
+    ]
+  },
+  {
+    "name": "realm-too-long",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"realm\":\"rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "realm",
+        "message": "must be at most 64 characters from A-Z, a-z, 0-9, dot, underscore, or hyphen"
+      }
+    ]
+  },
+  {
+    "name": "realm-unicode",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"realm\":\"bü\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "realm",
+        "message": "must be at most 64 characters from A-Z, a-z, 0-9, dot, underscore, or hyphen"
+      }
+    ]
+  },
+  {
+    "name": "username-empty",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"\"}",
+    "errors": [
+      {
+        "field": "username",
+        "message": "must be 1..256 characters without controls or whitespace at ends"
+      }
+    ]
+  },
+  {
+    "name": "username-leading-space",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\" alice\"}",
+    "errors": [
+      {
+        "field": "username",
+        "message": "must be 1..256 characters without controls or whitespace at ends"
+      }
+    ]
+  },
+  {
+    "name": "username-trailing-nbsp",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice \"}",
+    "errors": [
+      {
+        "field": "username",
+        "message": "must be 1..256 characters without controls or whitespace at ends"
+      }
+    ]
+  },
+  {
+    "name": "username-trailing-ideographic-space",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice　\"}",
+    "errors": [
+      {
+        "field": "username",
+        "message": "must be 1..256 characters without controls or whitespace at ends"
+      }
+    ]
+  },
+  {
+    "name": "username-too-long",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"uuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuuu\"}",
+    "errors": [
+      {
+        "field": "username",
+        "message": "must be 1..256 characters without controls or whitespace at ends"
+      }
+    ]
+  },
+  {
+    "name": "username-inner-space",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice smith\"}",
+    "profile": {
+      "schema_version": 1,
+      "id": "work",
+      "name": "Work",
+      "backend": "native",
+      "gateway": {
+        "host": "vpn.example.com",
+        "port": 443
+      },
+      "username": "alice smith",
+      "mfa": {
+        "mode": "none"
+      },
+      "routes": {
+        "mode": "gateway",
+        "preserve_lan": true
+      },
+      "dns": {
+        "mode": "none"
+      }
+    }
+  },
+  {
+    "name": "trusted-cert-short",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"trusted_cert\":\"abcd\",\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "trusted_cert",
+        "message": "must be 64 lowercase hexadecimal characters"
+      }
+    ]
+  },
+  {
+    "name": "trusted-cert-separators",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"trusted_cert\":\"::\",\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "trusted_cert",
+        "message": "must be 64 lowercase hexadecimal characters"
+      }
+    ]
+  },
+  {
+    "name": "trusted-cert-non-hex",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"trusted_cert\":\"gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg\",\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "trusted_cert",
+        "message": "must be 64 lowercase hexadecimal characters"
+      }
+    ]
+  },
+  {
+    "name": "mfa-unknown",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"mode\":\"sms\"},\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "mfa.mode",
+        "message": "must be none, push, prompt, totp, or static"
+      }
+    ]
+  },
+  {
+    "name": "totp-bad-parameters",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"algorithm\":\"MD5\",\"digits\":7,\"mode\":\"totp\",\"period\":10},\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "mfa.digits",
+        "message": "must be 6 or 8"
+      },
+      {
+        "field": "mfa.period",
+        "message": "must be 15..120"
+      },
+      {
+        "field": "mfa.algorithm",
+        "message": "must be SHA1, SHA256, or SHA512"
+      }
+    ]
+  },
+  {
+    "name": "totp-zero-parameters",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"algorithm\":\"\",\"digits\":0,\"mode\":\"totp\",\"period\":0},\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "mfa.digits",
+        "message": "must be 6 or 8"
+      },
+      {
+        "field": "mfa.period",
+        "message": "must be 15..120"
+      },
+      {
+        "field": "mfa.algorithm",
+        "message": "must be SHA1, SHA256, or SHA512"
+      }
+    ]
+  },
+  {
+    "name": "push-with-parameters",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"algorithm\":\"SHA1\",\"digits\":6,\"mode\":\"push\",\"period\":30},\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "mfa.digits",
+        "message": "only allowed for totp"
+      },
+      {
+        "field": "mfa.period",
+        "message": "only allowed for totp"
+      },
+      {
+        "field": "mfa.algorithm",
+        "message": "only allowed for totp"
+      }
+    ]
+  },
+  {
+    "name": "routes-unknown",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"mode\":\"split\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.mode",
+        "message": "must be gateway, custom, or full"
+      }
+    ]
+  },
+  {
+    "name": "gateway-with-include",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"include\":[\"10.0.0.0/8\"],\"mode\":\"gateway\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.include",
+        "message": "only allowed for custom"
+      }
+    ]
+  },
+  {
+    "name": "full-with-empty-include",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"include\":[],\"mode\":\"full\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.include",
+        "message": "only allowed for custom"
+      }
+    ]
+  },
+  {
+    "name": "custom-empty",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"include\":[],\"mode\":\"custom\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.include",
+        "message": "custom requires a non-empty list"
+      }
+    ]
+  },
+  {
+    "name": "custom-missing",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"mode\":\"custom\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.include",
+        "message": "custom requires a non-empty list"
+      }
+    ]
+  },
+  {
+    "name": "custom-with-exclude",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"exclude\":[\"192.0.2.0/24\"],\"include\":[\"10.0.0.0/8\"],\"mode\":\"custom\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.exclude",
+        "message": "only allowed for gateway or full"
+      }
+    ]
+  },
+  {
+    "name": "exclude-empty",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"exclude\":[],\"mode\":\"gateway\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.exclude",
+        "message": "must list 1..64 prefixes when present"
+      }
+    ]
+  },
+  {
+    "name": "exclude-too-many",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"exclude\":[\"10.0.0.0/24\",\"10.0.1.0/24\",\"10.0.2.0/24\",\"10.0.3.0/24\",\"10.0.4.0/24\",\"10.0.5.0/24\",\"10.0.6.0/24\",\"10.0.7.0/24\",\"10.0.8.0/24\",\"10.0.9.0/24\",\"10.0.10.0/24\",\"10.0.11.0/24\",\"10.0.12.0/24\",\"10.0.13.0/24\",\"10.0.14.0/24\",\"10.0.15.0/24\",\"10.0.16.0/24\",\"10.0.17.0/24\",\"10.0.18.0/24\",\"10.0.19.0/24\",\"10.0.20.0/24\",\"10.0.21.0/24\",\"10.0.22.0/24\",\"10.0.23.0/24\",\"10.0.24.0/24\",\"10.0.25.0/24\",\"10.0.26.0/24\",\"10.0.27.0/24\",\"10.0.28.0/24\",\"10.0.29.0/24\",\"10.0.30.0/24\",\"10.0.31.0/24\",\"10.0.32.0/24\",\"10.0.33.0/24\",\"10.0.34.0/24\",\"10.0.35.0/24\",\"10.0.36.0/24\",\"10.0.37.0/24\",\"10.0.38.0/24\",\"10.0.39.0/24\",\"10.0.40.0/24\",\"10.0.41.0/24\",\"10.0.42.0/24\",\"10.0.43.0/24\",\"10.0.44.0/24\",\"10.0.45.0/24\",\"10.0.46.0/24\",\"10.0.47.0/24\",\"10.0.48.0/24\",\"10.0.49.0/24\",\"10.0.50.0/24\",\"10.0.51.0/24\",\"10.0.52.0/24\",\"10.0.53.0/24\",\"10.0.54.0/24\",\"10.0.55.0/24\",\"10.0.56.0/24\",\"10.0.57.0/24\",\"10.0.58.0/24\",\"10.0.59.0/24\",\"10.0.60.0/24\",\"10.0.61.0/24\",\"10.0.62.0/24\",\"10.0.63.0/24\",\"10.0.64.0/24\"],\"mode\":\"gateway\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.exclude",
+        "message": "must list 1..64 prefixes when present"
+      }
+    ]
+  },
+  {
+    "name": "exclude-openfortivpn",
+    "input": "{\"backend\":\"openfortivpn\",\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"exclude\":[\"192.0.2.0/24\"],\"mode\":\"gateway\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.exclude",
+        "message": "requires the native backend"
+      }
+    ]
+  },
+  {
+    "name": "exclude-mfa-default-backend",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"mfa\":{\"mode\":\"prompt\"},\"name\":\"Work\",\"routes\":{\"exclude\":[\"192.0.2.0/24\"],\"mode\":\"full\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.exclude",
+        "message": "requires the native backend"
+      }
+    ]
+  },
+  {
+    "name": "prefix-problems",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"include\":[\"10.0.0.1/8\",\"10.0.0.0/4\",\"2001:db8::/32\",\"10.0.0.0\",\"192.0.2.0/08\",\"192.0.2.0/33\",\" 192.0.2.0/24\",\"010.0.0.0/8\",\"192.0.2.0/-1\",\"192.0.2.0/+8\",\"192.0.2.0/\"],\"mode\":\"custom\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.include[0]",
+        "message": "must be a canonical masked prefix"
+      },
+      {
+        "field": "routes.include[1]",
+        "message": "must be a canonical masked prefix"
+      },
+      {
+        "field": "routes.include[1]",
+        "message": "prefixes /0 through /7 are too broad"
+      },
+      {
+        "field": "routes.include[1]",
+        "message": "overlaps another prefix in the list"
+      },
+      {
+        "field": "routes.include[2]",
+        "message": "must be an IPv4 CIDR"
+      },
+      {
+        "field": "routes.include[3]",
+        "message": "must be an IPv4 CIDR"
+      },
+      {
+        "field": "routes.include[4]",
+        "message": "must be an IPv4 CIDR"
+      },
+      {
+        "field": "routes.include[5]",
+        "message": "must be an IPv4 CIDR"
+      },
+      {
+        "field": "routes.include[6]",
+        "message": "must be an IPv4 CIDR"
+      },
+      {
+        "field": "routes.include[7]",
+        "message": "must be an IPv4 CIDR"
+      },
+      {
+        "field": "routes.include[8]",
+        "message": "must be an IPv4 CIDR"
+      },
+      {
+        "field": "routes.include[9]",
+        "message": "must be an IPv4 CIDR"
+      },
+      {
+        "field": "routes.include[10]",
+        "message": "must be an IPv4 CIDR"
+      }
+    ]
+  },
+  {
+    "name": "prefix-duplicate-overlap",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"include\":[\"10.0.0.0/8\",\"10.0.0.0/8\",\"10.1.0.0/16\",\"192.0.2.0/24\",\"192.0.2.128/25\",\"0.0.0.0/0\"],\"mode\":\"custom\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.include[1]",
+        "message": "duplicate prefix"
+      },
+      {
+        "field": "routes.include[2]",
+        "message": "overlaps another prefix in the list"
+      },
+      {
+        "field": "routes.include[4]",
+        "message": "overlaps another prefix in the list"
+      },
+      {
+        "field": "routes.include[5]",
+        "message": "prefixes /0 through /7 are too broad"
+      },
+      {
+        "field": "routes.include[5]",
+        "message": "overlaps another prefix in the list"
+      }
+    ]
+  },
+  {
+    "name": "exclude-prefix-problems",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"routes\":{\"exclude\":[\"192.0.2.1/24\",\"192.0.2.0/24\",\"192.0.2.0/24\",\"::/0\"],\"mode\":\"full\"},\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "routes.exclude[0]",
+        "message": "must be a canonical masked prefix"
+      },
+      {
+        "field": "routes.exclude[1]",
+        "message": "overlaps another prefix in the list"
+      },
+      {
+        "field": "routes.exclude[2]",
+        "message": "overlaps another prefix in the list"
+      },
+      {
+        "field": "routes.exclude[3]",
+        "message": "must be an IPv4 CIDR"
+      }
+    ]
+  },
+  {
+    "name": "dns-unknown",
+    "input": "{\"dns\":{\"mode\":\"full\"},\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "dns.mode",
+        "message": "must be none or split"
+      }
+    ]
+  },
+  {
+    "name": "dns-none-with-domains",
+    "input": "{\"dns\":{\"domains\":[\"corp.example.com\"],\"mode\":\"none\"},\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "dns.domains",
+        "message": "only allowed for split"
+      }
+    ]
+  },
+  {
+    "name": "dns-split-empty",
+    "input": "{\"dns\":{\"domains\":[],\"mode\":\"split\"},\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "dns.domains",
+        "message": "split requires 1..32 domains"
+      }
+    ]
+  },
+  {
+    "name": "dns-split-missing",
+    "input": "{\"dns\":{\"mode\":\"split\"},\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "dns.domains",
+        "message": "split requires 1..32 domains"
+      }
+    ]
+  },
+  {
+    "name": "dns-split-too-many",
+    "input": "{\"dns\":{\"domains\":[\"d0.example.com\",\"d1.example.com\",\"d2.example.com\",\"d3.example.com\",\"d4.example.com\",\"d5.example.com\",\"d6.example.com\",\"d7.example.com\",\"d8.example.com\",\"d9.example.com\",\"d10.example.com\",\"d11.example.com\",\"d12.example.com\",\"d13.example.com\",\"d14.example.com\",\"d15.example.com\",\"d16.example.com\",\"d17.example.com\",\"d18.example.com\",\"d19.example.com\",\"d20.example.com\",\"d21.example.com\",\"d22.example.com\",\"d23.example.com\",\"d24.example.com\",\"d25.example.com\",\"d26.example.com\",\"d27.example.com\",\"d28.example.com\",\"d29.example.com\",\"d30.example.com\",\"d31.example.com\",\"d32.example.com\"],\"mode\":\"split\"},\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "dns.domains",
+        "message": "split requires 1..32 domains"
+      }
+    ]
+  },
+  {
+    "name": "dns-domain-problems",
+    "input": "{\"dns\":{\"domains\":[\"Corp.example.com\",\"*.example.com\",\"example\",\"example.com.\",\"corp.example.com\",\"corp.example.com\",\"-a.example.com\"],\"mode\":\"split\"},\"gateway\":{\"host\":\"vpn.example.com\"},\"id\":\"work\",\"name\":\"Work\",\"schema_version\":1,\"username\":\"alice\"}",
+    "errors": [
+      {
+        "field": "dns.domains[0]",
+        "message": "must be a lowercase DNS name with at least two labels, without trailing dot or wildcard"
+      },
+      {
+        "field": "dns.domains[1]",
+        "message": "must be a lowercase DNS name with at least two labels, without trailing dot or wildcard"
+      },
+      {
+        "field": "dns.domains[2]",
+        "message": "must be a lowercase DNS name with at least two labels, without trailing dot or wildcard"
+      },
+      {
+        "field": "dns.domains[3]",
+        "message": "must be a lowercase DNS name with at least two labels, without trailing dot or wildcard"
+      },
+      {
+        "field": "dns.domains[5]",
+        "message": "duplicate domain"
+      },
+      {
+        "field": "dns.domains[6]",
+        "message": "must be a lowercase DNS name with at least two labels, without trailing dot or wildcard"
+      }
+    ]
+  },
+  {
+    "name": "many-problems",
+    "input": "{\"schema_version\":0,\"id\":\"\",\"name\":\"\",\"backend\":\"x\",\"gateway\":{\"host\":\"\",\"port\":70000},\"realm\":\"!\",\"username\":\" \",\"trusted_cert\":\"z\",\"mfa\":{\"mode\":\"none\",\"digits\":6},\"routes\":{\"mode\":\"x\",\"include\":[\"1.2.3.4/7\"]},\"dns\":{\"mode\":\"x\",\"domains\":[\"A\"]}}",
+    "errors": [
+      {
+        "field": "schema_version",
+        "message": "must be 1"
+      },
+      {
+        "field": "id",
+        "message": "must match ^[a-z0-9][a-z0-9-]{0,62}$"
+      },
+      {
+        "field": "name",
+        "message": "must be 1..64 characters with no control characters"
+      },
+      {
+        "field": "backend",
+        "message": "must be native or openfortivpn"
+      },
+      {
+        "field": "gateway.host",
+        "message": "must be a DNS hostname or an unscoped IP literal"
+      },
+      {
+        "field": "gateway.port",
+        "message": "must be 1..65535"
+      },
+      {
+        "field": "realm",
+        "message": "must be at most 64 characters from A-Z, a-z, 0-9, dot, underscore, or hyphen"
+      },
+      {
+        "field": "username",
+        "message": "must be 1..256 characters without controls or whitespace at ends"
+      },
+      {
+        "field": "trusted_cert",
+        "message": "must be 64 lowercase hexadecimal characters"
+      },
+      {
+        "field": "mfa.digits",
+        "message": "only allowed for totp"
+      },
+      {
+        "field": "routes.mode",
+        "message": "must be gateway, custom, or full"
+      },
+      {
+        "field": "routes.include[0]",
+        "message": "must be a canonical masked prefix"
+      },
+      {
+        "field": "routes.include[0]",
+        "message": "prefixes /0 through /7 are too broad"
+      },
+      {
+        "field": "dns.mode",
+        "message": "must be none or split"
+      },
+      {
+        "field": "dns.domains[0]",
+        "message": "must be a lowercase DNS name with at least two labels, without trailing dot or wildcard"
+      }
+    ]
+  },
+  {
+    "name": "unknown-top-level",
+    "input": "{\"schema_version\":1,\"password\":\"x\"}",
+    "decode_error": "$: unknown field \"password\""
+  },
+  {
+    "name": "unknown-case-alias",
+    "input": "{\"schema_version\":1,\"ID\":\"work\"}",
+    "decode_error": "$: unknown field \"ID\""
+  },
+  {
+    "name": "unknown-nested",
+    "input": "{\"gateway\":{\"host\":\"vpn.example.com\",\"path\":\"/\"}}",
+    "decode_error": "$.gateway: unknown field \"path\""
+  },
+  {
+    "name": "unknown-nested-quoted",
+    "input": "{\"dns\":{\"mode\":\"none\",\"dömains\\\"\":[]}}",
+    "decode_error": "$.dns: unknown field \"dömains\\\"\""
+  },
+  {
+    "name": "duplicate-top-level",
+    "input": "{\"id\":\"work\",\"id\":\"home\"}",
+    "decode_error": "$.id: duplicate key"
+  },
+  {
+    "name": "duplicate-escaped",
+    "input": "{\"id\":\"work\",\"id\":\"home\"}",
+    "decode_error": "$.id: duplicate key"
+  },
+  {
+    "name": "duplicate-nested",
+    "input": "{\"gateway\":{\"host\":\"a.example.com\",\"host\":\"b.example.com\"}}",
+    "decode_error": "$.gateway.host: duplicate key"
+  },
+  {
+    "name": "duplicate-before-unknown",
+    "input": "{\"bogus\":1,\"bogus\":2}",
+    "decode_error": "$: unknown field \"bogus\""
+  },
+  {
+    "name": "null-top-level",
+    "input": "{\"realm\":null}",
+    "decode_error": "$.realm: null is not allowed"
+  },
+  {
+    "name": "null-in-list",
+    "input": "{\"routes\":{\"mode\":\"custom\",\"include\":[\"10.0.0.0/8\",null]}}",
+    "decode_error": "$.routes.include[1]: null is not allowed"
+  },
+  {
+    "name": "null-nested-in-list",
+    "input": "{\"routes\":{\"include\":[[null]]}}",
+    "decode_error": "$.routes.include[0][0]: null is not allowed"
+  },
+  {
+    "name": "top-level-array",
+    "input": "[]",
+    "decode_error": "profile: top level must be an object"
+  },
+  {
+    "name": "top-level-string",
+    "input": "\"profile\"",
+    "decode_error": "profile: top level must be an object"
+  },
+  {
+    "name": "trailing-object",
+    "input": "{} {}",
+    "decode_error": "profile: trailing data after object"
+  },
+  {
+    "name": "trailing-garbage",
+    "input": "{} x",
+    "decode_error": "profile: trailing data after object"
+  }
+]

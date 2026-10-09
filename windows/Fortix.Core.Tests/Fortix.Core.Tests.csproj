@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Golden-vector and transport tests for Fortix.Core; vectors are read from testdata/interop. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Fortix.Core.Tests</RootNamespace>
+    <IsPackable>false</IsPackable>
+    <!-- Tests bound every wait with their own timeouts instead of the per-test token. -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3" Version="3.2.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Golden vectors shared with the Go helper; copied so tests run from any directory. -->
+    <None Include="..\..\testdata\interop\*.json" LinkBase="interop" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Fortix.Core\Fortix.Core.csproj" />
+  </ItemGroup>
+</Project>

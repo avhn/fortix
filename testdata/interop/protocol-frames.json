@@ -1,0 +1,333 @@
+{
+  "max_line": 65536,
+  "version": 1,
+  "codes": [
+    "UNAUTHORIZED",
+    "NOT_FOUND",
+    "INVALID",
+    "CONFLICT",
+    "BUSY",
+    "INTERNAL",
+    "INTERFACE_MISMATCH"
+  ],
+  "requests": [
+    {
+      "name": "hello",
+      "frame": "{\"id\":\"1\",\"op\":\"hello\",\"version\":\"0.3.0\"}\n"
+    },
+    {
+      "name": "subscribe",
+      "frame": "{\"id\":\"2\",\"op\":\"subscribe\"}\n"
+    },
+    {
+      "name": "subscribe-logs",
+      "frame": "{\"id\":\"3\",\"op\":\"subscribe\",\"logs\":true}\n"
+    },
+    {
+      "name": "profile-list",
+      "frame": "{\"id\":\"4\",\"op\":\"profile.list\"}\n"
+    },
+    {
+      "name": "profile-get",
+      "frame": "{\"id\":\"5\",\"op\":\"profile.get\",\"profile\":\"work\"}\n"
+    },
+    {
+      "name": "profile-put",
+      "frame": "{\"id\":\"6\",\"op\":\"profile.put\",\"profile_json\":{\"schema_version\":1,\"id\":\"work\",\"name\":\"Work \\u003c\\u0026\\u003e 東京\",\"backend\":\"native\",\"gateway\":{\"host\":\"vpn.example.com\",\"port\":443},\"username\":\"jane.doe\",\"mfa\":{\"mode\":\"none\"},\"routes\":{\"mode\":\"gateway\",\"exclude\":[\"198.51.100.0/24\"],\"preserve_lan\":true},\"dns\":{\"mode\":\"split\",\"domains\":[\"corp.example.com\"]}}}\n"
+    },
+    {
+      "name": "profile-delete",
+      "frame": "{\"id\":\"7\",\"op\":\"profile.delete\",\"profile\":\"work\"}\n"
+    },
+    {
+      "name": "up",
+      "frame": "{\"id\":\"8\",\"op\":\"up\",\"profile\":\"work\"}\n"
+    },
+    {
+      "name": "down",
+      "frame": "{\"id\":\"9\",\"op\":\"down\",\"profile\":\"work\"}\n"
+    },
+    {
+      "name": "down-all",
+      "frame": "{\"id\":\"10\",\"op\":\"down\",\"all\":true}\n"
+    },
+    {
+      "name": "status",
+      "frame": "{\"id\":\"11\",\"op\":\"status\"}\n"
+    },
+    {
+      "name": "answer",
+      "frame": "{\"id\":\"12\",\"op\":\"answer\",\"challenge_id\":\"c1\",\"secret\":\"synthetic \\u003c\\u0026\\u003e 密碼 100%\"}\n"
+    },
+    {
+      "name": "answer-limit",
+      "frame": "{\"id\":\"13\",\"op\":\"answer\",\"challenge_id\":\"c1\",\"secret\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}\n"
+    },
+    {
+      "name": "answer-escaped-limit",
+      "frame": "{\"id\":\"14\",\"op\":\"answer\",\"challenge_id\":\"c1\",\"secret\":\"%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%x\"}\n"
+    },
+    {
+      "name": "cancel",
+      "frame": "{\"id\":\"15\",\"op\":\"cancel\",\"challenge_id\":\"c1\"}\n"
+    },
+    {
+      "name": "trust",
+      "frame": "{\"id\":\"16\",\"op\":\"trust\",\"profile\":\"work\",\"digest\":\"abababababababababababababababababababababababababababababababab\"}\n"
+    },
+    {
+      "name": "logs",
+      "frame": "{\"id\":\"17\",\"op\":\"logs\",\"profile\":\"work\"}\n"
+    },
+    {
+      "name": "logs-lines",
+      "frame": "{\"id\":\"18\",\"op\":\"logs\",\"profile\":\"work\",\"lines\":500}\n"
+    },
+    {
+      "name": "id-limit",
+      "frame": "{\"id\":\"99999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\",\"op\":\"status\"}\n"
+    }
+  ],
+  "invalid_requests": [
+    {
+      "name": "empty-id",
+      "frame": "{\"id\":\"\",\"op\":\"status\"}\n"
+    },
+    {
+      "name": "long-id",
+      "frame": "{\"id\":\"999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999999\",\"op\":\"status\"}\n"
+    },
+    {
+      "name": "unknown-op",
+      "frame": "{\"id\":\"1\",\"op\":\"restart\"}\n"
+    },
+    {
+      "name": "hello-with-profile",
+      "frame": "{\"id\":\"1\",\"op\":\"hello\",\"profile\":\"work\"}\n"
+    },
+    {
+      "name": "status-with-all",
+      "frame": "{\"id\":\"1\",\"op\":\"status\",\"all\":true}\n"
+    },
+    {
+      "name": "up-without-profile",
+      "frame": "{\"id\":\"1\",\"op\":\"up\"}\n"
+    },
+    {
+      "name": "down-without-target",
+      "frame": "{\"id\":\"1\",\"op\":\"down\"}\n"
+    },
+    {
+      "name": "down-all-and-profile",
+      "frame": "{\"id\":\"1\",\"op\":\"down\",\"profile\":\"work\",\"all\":true}\n"
+    },
+    {
+      "name": "put-without-json",
+      "frame": "{\"id\":\"1\",\"op\":\"profile.put\"}\n"
+    },
+    {
+      "name": "answer-without-challenge",
+      "frame": "{\"id\":\"1\",\"op\":\"answer\",\"secret\":\"x\"}\n"
+    },
+    {
+      "name": "cancel-with-secret",
+      "frame": "{\"id\":\"1\",\"op\":\"cancel\",\"challenge_id\":\"c1\",\"secret\":\"x\"}\n"
+    },
+    {
+      "name": "secret-too-long",
+      "frame": "{\"id\":\"1\",\"op\":\"answer\",\"challenge_id\":\"c1\",\"secret\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}\n"
+    },
+    {
+      "name": "secret-escaped-too-long",
+      "frame": "{\"id\":\"1\",\"op\":\"answer\",\"challenge_id\":\"c1\",\"secret\":\"\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\n\\nx\"}\n"
+    },
+    {
+      "name": "trust-short-digest",
+      "frame": "{\"id\":\"1\",\"op\":\"trust\",\"profile\":\"work\",\"digest\":\"abababababababababababababababababababababababababababababababa\"}\n"
+    },
+    {
+      "name": "logs-too-many",
+      "frame": "{\"id\":\"1\",\"op\":\"logs\",\"profile\":\"work\",\"lines\":501}\n"
+    },
+    {
+      "name": "logs-negative",
+      "frame": "{\"id\":\"1\",\"op\":\"logs\",\"profile\":\"work\",\"lines\":-1}\n"
+    },
+    {
+      "name": "subscribe-with-lines",
+      "frame": "{\"id\":\"1\",\"op\":\"subscribe\",\"lines\":5}\n"
+    }
+  ],
+  "results": [
+    {
+      "name": "hello",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"ok\":true,\"data\":{\"helper_version\":\"0.3.0\",\"protocol\":1}}\n"
+    },
+    {
+      "name": "empty",
+      "frame": "{\"type\":\"result\",\"id\":\"2\",\"ok\":true}\n"
+    },
+    {
+      "name": "profile-list",
+      "frame": "{\"type\":\"result\",\"id\":\"4\",\"ok\":true,\"data\":[{\"profile\":\"home\",\"state\":\"disconnected\"},{\"profile\":\"work\",\"state\":\"connected\"}]}\n"
+    },
+    {
+      "name": "profile-get",
+      "frame": "{\"type\":\"result\",\"id\":\"5\",\"ok\":true,\"data\":{\"schema_version\":1,\"id\":\"work\",\"name\":\"Work \\u003c\\u0026\\u003e 東京\",\"backend\":\"native\",\"gateway\":{\"host\":\"vpn.example.com\",\"port\":443},\"username\":\"jane.doe\",\"mfa\":{\"mode\":\"none\"},\"routes\":{\"mode\":\"gateway\",\"exclude\":[\"198.51.100.0/24\"],\"preserve_lan\":true},\"dns\":{\"mode\":\"split\",\"domains\":[\"corp.example.com\"]}}}\n"
+    },
+    {
+      "name": "up",
+      "frame": "{\"type\":\"result\",\"id\":\"8\",\"ok\":true,\"data\":{\"attempt\":18446744073709551615}}\n"
+    },
+    {
+      "name": "status",
+      "frame": "{\"type\":\"result\",\"id\":\"11\",\"ok\":true,\"data\":[{\"wanted\":true,\"initiated\":true,\"cleanup_pending\":false,\"profile\":\"work\",\"state\":\"connected\",\"detail\":\"connected\",\"attempt\":3,\"interface\":\"Fortix\",\"local_ip\":\"198.51.100.10\",\"since\":\"2026-01-02T03:04:05Z\"},{\"wanted\":false,\"initiated\":false,\"cleanup_pending\":false,\"profile\":\"home\",\"state\":\"disconnected\",\"detail\":\"\",\"attempt\":0,\"interface\":\"\",\"local_ip\":\"\",\"since\":\"0001-01-01T00:00:00Z\"}]}\n"
+    },
+    {
+      "name": "status-empty",
+      "frame": "{\"type\":\"result\",\"id\":\"11\",\"ok\":true,\"data\":[]}\n"
+    },
+    {
+      "name": "logs",
+      "frame": "{\"type\":\"result\",\"id\":\"17\",\"ok\":true,\"data\":[\"INFO: connected\",\"sanitized \\u003c\\u0026\\u003e 東京\"]}\n"
+    },
+    {
+      "name": "unauthorized-before-request",
+      "frame": "{\"type\":\"result\",\"id\":\"\",\"ok\":false,\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"peer is not authorized\"}}\n"
+    },
+    {
+      "name": "error-unauthorized",
+      "frame": "{\"type\":\"result\",\"id\":\"20\",\"ok\":false,\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"Synthetic operation failure\"}}\n"
+    },
+    {
+      "name": "error-not_found",
+      "frame": "{\"type\":\"result\",\"id\":\"20\",\"ok\":false,\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"Synthetic operation failure\"}}\n"
+    },
+    {
+      "name": "error-invalid",
+      "frame": "{\"type\":\"result\",\"id\":\"20\",\"ok\":false,\"error\":{\"code\":\"INVALID\",\"message\":\"Synthetic operation failure\"}}\n"
+    },
+    {
+      "name": "error-conflict",
+      "frame": "{\"type\":\"result\",\"id\":\"20\",\"ok\":false,\"error\":{\"code\":\"CONFLICT\",\"message\":\"Synthetic operation failure\"}}\n"
+    },
+    {
+      "name": "error-busy",
+      "frame": "{\"type\":\"result\",\"id\":\"20\",\"ok\":false,\"error\":{\"code\":\"BUSY\",\"message\":\"Synthetic operation failure\"}}\n"
+    },
+    {
+      "name": "error-internal",
+      "frame": "{\"type\":\"result\",\"id\":\"20\",\"ok\":false,\"error\":{\"code\":\"INTERNAL\",\"message\":\"Synthetic operation failure\"}}\n"
+    },
+    {
+      "name": "error-interface_mismatch",
+      "frame": "{\"type\":\"result\",\"id\":\"20\",\"ok\":false,\"error\":{\"code\":\"INTERFACE_MISMATCH\",\"message\":\"Synthetic operation failure\"}}\n"
+    }
+  ],
+  "events": [
+    {
+      "name": "state",
+      "frame": "{\"attempt\":1,\"cleanup_pending\":false,\"detail\":\"\",\"initiated\":true,\"profile\":\"work\",\"state\":\"connected\",\"type\":\"state\",\"wanted\":true}\n"
+    },
+    {
+      "name": "state-empty-detail",
+      "frame": "{\"attempt\":2,\"cleanup_pending\":false,\"detail\":\"\",\"initiated\":false,\"profile\":\"work\",\"state\":\"disconnected\",\"type\":\"state\",\"wanted\":false}\n"
+    },
+    {
+      "name": "state-code",
+      "frame": "{\"attempt\":2,\"cleanup_pending\":true,\"code\":\"INTERFACE_MISMATCH\",\"detail\":\"network cleanup failed\",\"initiated\":false,\"profile\":\"work\",\"state\":\"failed\",\"type\":\"state\",\"wanted\":true}\n"
+    },
+    {
+      "name": "challenge",
+      "frame": "{\"attempt\":1,\"challenge_id\":\"c1\",\"kind\":\"password\",\"profile\":\"work\",\"prompt\":\"Password for jane.doe\",\"type\":\"challenge\"}\n"
+    },
+    {
+      "name": "challenge-empty-prompt",
+      "frame": "{\"attempt\":1,\"challenge_id\":\"c2\",\"kind\":\"code\",\"profile\":\"work\",\"prompt\":\"\",\"type\":\"challenge\"}\n"
+    },
+    {
+      "name": "cert",
+      "frame": "{\"attempt\":1,\"digest\":\"abababababababababababababababababababababababababababababababab\",\"issuer\":\"CN=Example CA\",\"profile\":\"work\",\"subject\":\"CN=vpn.example.com\",\"type\":\"cert\"}\n"
+    },
+    {
+      "name": "log",
+      "frame": "{\"attempt\":1,\"line\":\"sanitized \\u003c\\u0026\\u003e 東京\",\"profile\":\"work\",\"type\":\"log\"}\n"
+    },
+    {
+      "name": "max-attempt",
+      "frame": "{\"attempt\":18446744073709551615,\"line\":\"\",\"profile\":\"work\",\"type\":\"log\"}\n"
+    }
+  ],
+  "invalid_results": [
+    {
+      "name": "ok-with-error",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"ok\":true,\"error\":{\"code\":\"INVALID\",\"message\":\"x\"}}\n"
+    },
+    {
+      "name": "failure-without-error",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"ok\":false}\n"
+    },
+    {
+      "name": "missing-id",
+      "frame": "{\"type\":\"result\",\"ok\":true}\n"
+    },
+    {
+      "name": "unknown-type",
+      "frame": "{\"type\":\"notice\",\"profile\":\"work\",\"attempt\":1}\n"
+    }
+  ],
+  "malformed": [
+    {
+      "name": "duplicate-key",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"id\":\"2\",\"ok\":true}\n"
+    },
+    {
+      "name": "escaped-duplicate-key",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"id\":\"2\",\"ok\":true}\n"
+    },
+    {
+      "name": "null-value",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"ok\":true,\"data\":null}\n"
+    },
+    {
+      "name": "nested-null",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"ok\":true,\"data\":[1,null]}\n"
+    },
+    {
+      "name": "unknown-field",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"ok\":true,\"extra\":1}\n"
+    },
+    {
+      "name": "case-alias",
+      "frame": "{\"type\":\"result\",\"ID\":\"1\",\"ok\":true}\n"
+    },
+    {
+      "name": "trailing-data",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"ok\":true} {}\n"
+    },
+    {
+      "name": "not-object",
+      "frame": "[\"result\"]\n"
+    },
+    {
+      "name": "wrong-type",
+      "frame": "{\"type\":\"result\",\"id\":1,\"ok\":true}\n"
+    },
+    {
+      "name": "fractional-attempt",
+      "frame": "{\"type\":\"log\",\"profile\":\"work\",\"attempt\":1.5,\"line\":\"\"}\n"
+    },
+    {
+      "name": "negative-attempt",
+      "frame": "{\"type\":\"log\",\"profile\":\"work\",\"attempt\":-1,\"line\":\"\"}\n"
+    },
+    {
+      "name": "too-deep",
+      "frame": "{\"type\":\"result\",\"id\":\"1\",\"ok\":true,\"data\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}\n"
+    },
+    {
+      "name": "truncated",
+      "frame": "{\"type\":\"result\",\"id\":\"1\"\n"
+    }
+  ]
+}

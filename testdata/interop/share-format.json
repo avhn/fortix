@@ -1,0 +1,947 @@
+{
+  "export": [
+    {
+      "name": "single",
+      "profiles": [
+        {
+          "backend": "native",
+          "dns": {
+            "mode": "none"
+          },
+          "gateway": {
+            "host": "vpn.example.com"
+          },
+          "id": "work",
+          "mfa": {
+            "mode": "none"
+          },
+          "name": "Work",
+          "routes": {
+            "mode": "gateway",
+            "preserve_lan": true
+          },
+          "schema_version": 1,
+          "username": "alice"
+        }
+      ],
+      "error": {
+        "errors": [
+          {
+            "field": "gateway.port",
+            "message": "must be 1..65535"
+          }
+        ]
+      }
+    },
+    {
+      "name": "normalizes",
+      "profiles": [
+        {
+          "backend": "native",
+          "dns": {
+            "domains": [
+              "*.Corp.Example.com"
+            ],
+            "mode": "split"
+          },
+          "gateway": {
+            "host": "vpn.example.com"
+          },
+          "id": "work",
+          "mfa": {
+            "mode": "none"
+          },
+          "name": "Büro \u003c\u0026\u003e \u2028",
+          "realm": "corp",
+          "routes": {
+            "exclude": [
+              " 192.0.2.7/24 "
+            ],
+            "mode": "full",
+            "preserve_lan": false
+          },
+          "schema_version": 1,
+          "trusted_cert": "Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab",
+          "username": "alice"
+        }
+      ],
+      "error": {
+        "errors": [
+          {
+            "field": "gateway.port",
+            "message": "must be 1..65535"
+          }
+        ]
+      }
+    },
+    {
+      "name": "several",
+      "profiles": [
+        {
+          "backend": "openfortivpn",
+          "dns": {
+            "mode": "none"
+          },
+          "gateway": {
+            "host": "vpn.example.com"
+          },
+          "id": "one",
+          "mfa": {
+            "algorithm": "SHA1",
+            "digits": 6,
+            "mode": "totp",
+            "period": 30
+          },
+          "name": "Work",
+          "routes": {
+            "include": [
+              "10.1.2.3/16"
+            ],
+            "mode": "custom",
+            "preserve_lan": true
+          },
+          "schema_version": 1,
+          "username": "alice"
+        },
+        {
+          "backend": "native",
+          "dns": {
+            "mode": "none"
+          },
+          "gateway": {
+            "host": "vpn.example.com"
+          },
+          "id": "two",
+          "mfa": {
+            "mode": "none"
+          },
+          "name": "Work",
+          "routes": {
+            "mode": "gateway",
+            "preserve_lan": true
+          },
+          "schema_version": 1,
+          "username": "alice"
+        }
+      ],
+      "error": {
+        "errors": [
+          {
+            "field": "gateway.port",
+            "message": "must be 1..65535"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing-preserve-lan",
+      "profiles": [
+        {
+          "backend": "native",
+          "dns": {
+            "mode": "none"
+          },
+          "gateway": {
+            "host": "vpn.example.com"
+          },
+          "id": "work",
+          "mfa": {
+            "mode": "none"
+          },
+          "name": "Work",
+          "routes": {
+            "mode": "gateway"
+          },
+          "schema_version": 1,
+          "username": "alice"
+        }
+      ],
+      "error": {
+        "errors": [
+          {
+            "field": "gateway.port",
+            "message": "must be 1..65535"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid",
+      "profiles": [
+        {
+          "dns": {
+            "mode": "none"
+          },
+          "gateway": {
+            "host": "vpn.example.com"
+          },
+          "id": "work",
+          "mfa": {
+            "mode": "none"
+          },
+          "name": "",
+          "routes": {
+            "mode": "gateway"
+          },
+          "schema_version": 1,
+          "username": "alice"
+        }
+      ],
+      "error": {
+        "errors": [
+          {
+            "field": "name",
+            "message": "must be 1..64 characters with no control characters"
+          },
+          {
+            "field": "gateway.port",
+            "message": "must be 1..65535"
+          }
+        ]
+      }
+    },
+    {
+      "name": "duplicate-id",
+      "profiles": [
+        {
+          "backend": "native",
+          "dns": {
+            "mode": "none"
+          },
+          "gateway": {
+            "host": "vpn.example.com"
+          },
+          "id": "work",
+          "mfa": {
+            "mode": "none"
+          },
+          "name": "Work",
+          "routes": {
+            "mode": "gateway"
+          },
+          "schema_version": 1,
+          "username": "alice"
+        },
+        {
+          "backend": "native",
+          "dns": {
+            "mode": "none"
+          },
+          "gateway": {
+            "host": "vpn.example.com"
+          },
+          "id": "work",
+          "mfa": {
+            "mode": "none"
+          },
+          "name": "Work",
+          "routes": {
+            "mode": "gateway"
+          },
+          "schema_version": 1,
+          "username": "alice"
+        }
+      ],
+      "error": {
+        "errors": [
+          {
+            "field": "gateway.port",
+            "message": "must be 1..65535"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty",
+      "profiles": [],
+      "error": {
+        "kind": "count",
+        "field": "profiles",
+        "message": "must contain 1..32 profiles"
+      }
+    }
+  ],
+  "parse": [
+    {
+      "name": "empty-draft",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{}]}",
+      "drafts": [
+        {}
+      ],
+      "missing": [
+        [
+          "id",
+          "name",
+          "gateway.host",
+          "username"
+        ]
+      ]
+    },
+    {
+      "name": "partial",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"name\":\"Office\",\"gateway\":{\"host\":\"vpn.example.com\"}}]}",
+      "drafts": [
+        {
+          "name": "Office",
+          "gateway": {
+            "host": "vpn.example.com"
+          }
+        }
+      ],
+      "missing": [
+        [
+          "id",
+          "username"
+        ]
+      ]
+    },
+    {
+      "name": "full",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"schema_version\":1,\"id\":\"work\",\"name\":\"Work\",\"backend\":\"native\",\"gateway\":{\"host\":\"vpn.example.com\",\"port\":443},\"realm\":\"corp\",\"trusted_cert\":\"Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab:Ab\",\"mfa\":{\"mode\":\"none\"},\"routes\":{\"mode\":\"full\",\"exclude\":[\" 192.0.2.7/24\"],\"preserve_lan\":false},\"dns\":{\"mode\":\"split\",\"domains\":[\"*.Corp.example.com\"]}}]}",
+      "drafts": [
+        {
+          "schema_version": 1,
+          "id": "work",
+          "name": "Work",
+          "backend": "native",
+          "gateway": {
+            "host": "vpn.example.com",
+            "port": 443
+          },
+          "realm": "corp",
+          "trusted_cert": "abababababababababababababababababababababababababababababababab",
+          "mfa": {
+            "mode": "none"
+          },
+          "routes": {
+            "mode": "full",
+            "exclude": [
+              "192.0.2.0/24"
+            ],
+            "preserve_lan": false
+          },
+          "dns": {
+            "mode": "split",
+            "domains": [
+              "corp.example.com"
+            ]
+          }
+        }
+      ],
+      "missing": [
+        [
+          "username"
+        ]
+      ]
+    },
+    {
+      "name": "custom-needs-include",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"routes\":{\"mode\":\"custom\"},\"dns\":{\"mode\":\"split\"}}]}",
+      "drafts": [
+        {
+          "routes": {
+            "mode": "custom"
+          },
+          "dns": {
+            "mode": "split"
+          }
+        }
+      ],
+      "missing": [
+        [
+          "id",
+          "name",
+          "gateway.host",
+          "username",
+          "routes.include",
+          "dns.domains"
+        ]
+      ]
+    },
+    {
+      "name": "list-implies-mode",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"routes\":{\"include\":[\"10.0.0.0/8\"]},\"dns\":{\"domains\":[\"corp.example.com\"]}}]}",
+      "drafts": [
+        {
+          "routes": {
+            "include": [
+              "10.0.0.0/8"
+            ]
+          },
+          "dns": {
+            "domains": [
+              "corp.example.com"
+            ]
+          }
+        }
+      ],
+      "missing": [
+        [
+          "id",
+          "name",
+          "gateway.host",
+          "username"
+        ]
+      ]
+    },
+    {
+      "name": "totp-parameters-only",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"mfa\":{\"digits\":8}}]}",
+      "drafts": [
+        {
+          "mfa": {
+            "digits": 8
+          }
+        }
+      ],
+      "missing": [
+        [
+          "id",
+          "name",
+          "gateway.host",
+          "username"
+        ]
+      ]
+    },
+    {
+      "name": "explicit-empty-lists",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"routes\":{\"mode\":\"gateway\",\"exclude\":[]},\"dns\":{\"mode\":\"none\",\"domains\":[]}}]}",
+      "error": {
+        "errors": [
+          {
+            "field": "routes.exclude",
+            "message": "must list 1..64 prefixes when present"
+          },
+          {
+            "field": "dns.domains",
+            "message": "only allowed for split"
+          }
+        ]
+      }
+    },
+    {
+      "name": "two-profiles",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"a\"},{\"id\":\"b\"}]}",
+      "drafts": [
+        {
+          "id": "a"
+        },
+        {
+          "id": "b"
+        }
+      ],
+      "missing": [
+        [
+          "name",
+          "gateway.host",
+          "username"
+        ],
+        [
+          "name",
+          "gateway.host",
+          "username"
+        ]
+      ]
+    },
+    {
+      "name": "whitespace",
+      "document": "  \n{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"a\"}]}\n\t ",
+      "drafts": [
+        {
+          "id": "a"
+        }
+      ],
+      "missing": [
+        [
+          "name",
+          "gateway.host",
+          "username"
+        ]
+      ]
+    },
+    {
+      "name": "secret-key",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"a\",\"Password\":\"x\"}]}",
+      "error": {
+        "kind": "secret",
+        "field": "password",
+        "message": "secret fields are forbidden"
+      }
+    },
+    {
+      "name": "secret-nested",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"gateway\":{\"token\":\"x\"}}]}",
+      "error": {
+        "kind": "secret",
+        "field": "token",
+        "message": "secret fields are forbidden"
+      }
+    },
+    {
+      "name": "secret-top-level",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{}],\"cookie\":\"x\"}",
+      "error": {
+        "kind": "secret",
+        "field": "cookie",
+        "message": "secret fields are forbidden"
+      }
+    },
+    {
+      "name": "secret-after-duplicate",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"a\",\"id\":\"b\",\"otp\":\"1\"}]}",
+      "error": {
+        "kind": "secret",
+        "field": "otp",
+        "message": "secret fields are forbidden"
+      }
+    },
+    {
+      "name": "secret-after-null",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":null,\"svpncookie\":\"1\"}]}",
+      "error": {
+        "kind": "secret",
+        "field": "svpncookie",
+        "message": "secret fields are forbidden"
+      }
+    },
+    {
+      "name": "secret-in-array",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"routes\":{\"include\":[{\"credentials\":1}]}}]}",
+      "error": {
+        "kind": "secret",
+        "field": "credentials",
+        "message": "secret fields are forbidden"
+      }
+    },
+    {
+      "name": "duplicate-key",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"a\",\"id\":\"b\"}]}",
+      "error": {
+        "kind": "duplicate_key",
+        "field": "$",
+        "message": "duplicate object key"
+      }
+    },
+    {
+      "name": "null",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":null}]}",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "null is not allowed"
+      }
+    },
+    {
+      "name": "null-in-list",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"dns\":{\"domains\":[null]}}]}",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "null is not allowed"
+      }
+    },
+    {
+      "name": "trailing",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{}]} {}",
+      "error": {
+        "kind": "json",
+        "field": "$",
+        "message": "trailing data after document"
+      }
+    },
+    {
+      "name": "invalid-json",
+      "document": "{\"format\":",
+      "error": {
+        "kind": "json",
+        "field": "$",
+        "message": "invalid JSON"
+      }
+    },
+    {
+      "name": "not-object",
+      "document": "[]",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "must be an object"
+      }
+    },
+    {
+      "name": "unknown-top-level",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{}],\"extra\":1}",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "unknown field in shared configuration"
+      }
+    },
+    {
+      "name": "username-forbidden",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"username\":\"alice\"}]}",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "unknown field in shared configuration"
+      }
+    },
+    {
+      "name": "unknown-profile-field",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"color\":\"blue\"}]}",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "unknown field in shared configuration"
+      }
+    },
+    {
+      "name": "unknown-nested-field",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"gateway\":{\"host\":\"a.example.com\",\"path\":\"/\"}}]}",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "unknown field in shared configuration"
+      }
+    },
+    {
+      "name": "nested-not-object",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"gateway\":\"a.example.com\"}]}",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "must be an object"
+      }
+    },
+    {
+      "name": "profile-not-object",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[\"a\"]}",
+      "error": {
+        "kind": "field",
+        "field": "$",
+        "message": "must be an object"
+      }
+    },
+    {
+      "name": "profiles-not-array",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":{}}",
+      "error": {
+        "kind": "json",
+        "field": "$",
+        "message": "invalid document field type"
+      }
+    },
+    {
+      "name": "wrong-format",
+      "document": "{\"format\":\"other\",\"version\":1,\"profiles\":[{}]}",
+      "error": {
+        "kind": "format",
+        "field": "format",
+        "message": "must be fortix-profile"
+      }
+    },
+    {
+      "name": "missing-format",
+      "document": "{\"version\":1,\"profiles\":[{}]}",
+      "error": {
+        "kind": "format",
+        "field": "format",
+        "message": "must be fortix-profile"
+      }
+    },
+    {
+      "name": "format-not-string",
+      "document": "{\"format\":1,\"version\":1,\"profiles\":[{}]}",
+      "error": {
+        "kind": "format",
+        "field": "format",
+        "message": "must be fortix-profile"
+      }
+    },
+    {
+      "name": "wrong-version",
+      "document": "{\"format\":\"fortix-profile\",\"version\":2,\"profiles\":[{}]}",
+      "error": {
+        "kind": "version",
+        "field": "version",
+        "message": "must be 1"
+      }
+    },
+    {
+      "name": "fractional-version",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1.0,\"profiles\":[{}]}",
+      "error": {
+        "kind": "version",
+        "field": "version",
+        "message": "must be 1"
+      }
+    },
+    {
+      "name": "missing-profiles",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1}",
+      "error": {
+        "kind": "count",
+        "field": "profiles",
+        "message": "must contain 1..32 profiles"
+      }
+    },
+    {
+      "name": "zero-profiles",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[]}",
+      "error": {
+        "kind": "count",
+        "field": "profiles",
+        "message": "must contain 1..32 profiles"
+      }
+    },
+    {
+      "name": "too-many-profiles",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{},{}]}",
+      "error": {
+        "kind": "count",
+        "field": "profiles",
+        "message": "must contain 1..32 profiles"
+      }
+    },
+    {
+      "name": "field-type",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":5}]}",
+      "error": {
+        "kind": "json",
+        "field": "profiles",
+        "message": "invalid profile field type"
+      }
+    },
+    {
+      "name": "port-fraction",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"gateway\":{\"port\":443.5}}]}",
+      "error": {
+        "kind": "json",
+        "field": "profiles",
+        "message": "invalid profile field type"
+      }
+    },
+    {
+      "name": "duplicate-id",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"a\"},{\"id\":\"a\"}]}",
+      "error": {
+        "kind": "duplicate_id",
+        "field": "profiles.id",
+        "message": "duplicate profile id"
+      }
+    },
+    {
+      "name": "invalid-supplied",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"Bad\",\"name\":\"\",\"gateway\":{\"port\":0},\"routes\":{\"include\":[\"10.0.0.1/8\",\"2001:db8::/32\"]},\"dns\":{\"domains\":[\"bad\"]}}]}",
+      "error": {
+        "errors": [
+          {
+            "field": "id",
+            "message": "must match ^[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          {
+            "field": "name",
+            "message": "must be 1..64 characters with no control characters"
+          },
+          {
+            "field": "gateway.port",
+            "message": "must be 1..65535"
+          },
+          {
+            "field": "routes.include[1]",
+            "message": "must be an IPv4 CIDR"
+          },
+          {
+            "field": "dns.domains[0]",
+            "message": "must be a lowercase DNS name with at least two labels, without trailing dot or wildcard"
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid-mfa",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"backend\":\"native\",\"mfa\":{\"mode\":\"push\"}}]}",
+      "error": {
+        "errors": [
+          {
+            "field": "backend",
+            "message": "native requires mfa.mode none; use openfortivpn for second factors"
+          }
+        ]
+      }
+    },
+    {
+      "name": "exclude-openfortivpn",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"backend\":\"openfortivpn\",\"routes\":{\"exclude\":[\"192.0.2.0/24\"]}}]}",
+      "error": {
+        "errors": [
+          {
+            "field": "routes.exclude",
+            "message": "requires the native backend"
+          }
+        ]
+      }
+    },
+    {
+      "name": "exclude-implied-backend",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"mfa\":{\"mode\":\"push\"},\"routes\":{\"exclude\":[\"192.0.2.0/24\"]}}]}",
+      "error": {
+        "errors": [
+          {
+            "field": "routes.exclude",
+            "message": "requires the native backend"
+          }
+        ]
+      }
+    }
+  ],
+  "complete": [
+    {
+      "name": "defaults",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"name\":\"Office\",\"gateway\":{\"host\":\"vpn.example.com\"}}]}",
+      "username": "alice",
+      "id": "office",
+      "profile": {
+        "schema_version": 1,
+        "id": "office",
+        "name": "Office",
+        "backend": "native",
+        "gateway": {
+          "host": "vpn.example.com",
+          "port": 443
+        },
+        "username": "alice",
+        "mfa": {
+          "mode": "none"
+        },
+        "routes": {
+          "mode": "gateway",
+          "preserve_lan": true
+        },
+        "dns": {
+          "mode": "none"
+        }
+      }
+    },
+    {
+      "name": "shared-id",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"work\",\"name\":\"Work\",\"gateway\":{\"host\":\"vpn.example.com\"},\"mfa\":{\"mode\":\"totp\"}}]}",
+      "username": "alice",
+      "id": "",
+      "profile": {
+        "schema_version": 1,
+        "id": "work",
+        "name": "Work",
+        "backend": "openfortivpn",
+        "gateway": {
+          "host": "vpn.example.com",
+          "port": 443
+        },
+        "username": "alice",
+        "mfa": {
+          "mode": "totp",
+          "digits": 6,
+          "period": 30,
+          "algorithm": "SHA1"
+        },
+        "routes": {
+          "mode": "gateway",
+          "preserve_lan": true
+        },
+        "dns": {
+          "mode": "none"
+        }
+      }
+    },
+    {
+      "name": "override-id",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"work\",\"name\":\"Work\",\"gateway\":{\"host\":\"vpn.example.com\"}}]}",
+      "username": "alice",
+      "id": "home",
+      "profile": {
+        "schema_version": 1,
+        "id": "home",
+        "name": "Work",
+        "backend": "native",
+        "gateway": {
+          "host": "vpn.example.com",
+          "port": 443
+        },
+        "username": "alice",
+        "mfa": {
+          "mode": "none"
+        },
+        "routes": {
+          "mode": "gateway",
+          "preserve_lan": true
+        },
+        "dns": {
+          "mode": "none"
+        }
+      }
+    },
+    {
+      "name": "missing-username",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"work\",\"name\":\"Work\",\"gateway\":{\"host\":\"vpn.example.com\"}}]}",
+      "username": "",
+      "id": "",
+      "error": {
+        "errors": [
+          {
+            "field": "username",
+            "message": "must be 1..256 characters without controls or whitespace at ends"
+          }
+        ]
+      }
+    },
+    {
+      "name": "missing-fields",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{}]}",
+      "username": "alice",
+      "id": "",
+      "error": {
+        "errors": [
+          {
+            "field": "id",
+            "message": "must match ^[a-z0-9][a-z0-9-]{0,62}$"
+          },
+          {
+            "field": "name",
+            "message": "must be 1..64 characters with no control characters"
+          },
+          {
+            "field": "gateway.host",
+            "message": "must be a DNS hostname or an unscoped IP literal"
+          }
+        ]
+      }
+    },
+    {
+      "name": "explicit-port-zero",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"work\",\"name\":\"Work\",\"gateway\":{\"host\":\"vpn.example.com\",\"port\":0}}]}",
+      "username": "alice",
+      "id": "",
+      "error": {
+        "errors": [
+          {
+            "field": "gateway.port",
+            "message": "must be 1..65535"
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-mode",
+      "document": "{\"format\":\"fortix-profile\",\"version\":1,\"profiles\":[{\"id\":\"work\",\"name\":\"Work\",\"gateway\":{\"host\":\"vpn.example.com\"},\"routes\":{\"mode\":\"\"}}]}",
+      "username": "alice",
+      "id": "",
+      "error": {
+        "errors": [
+          {
+            "field": "routes.mode",
+            "message": "must be gateway, custom, or full"
+          }
+        ]
+      }
+    }
+  ]
+}
