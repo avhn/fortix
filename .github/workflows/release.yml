@@ -23,9 +23,6 @@ jobs:
   linux:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      # GoReleaser can require a newer Go than the module's build toolchain.
-      GOTOOLCHAIN: auto
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,10 +36,16 @@ jobs:
         run: |
           make check
           make cross-build
+      - name: Install GoReleaser
+        # GoReleaser needs a newer Go than the module. Only this step uses it: setup-go
+        # pins later steps to the go.mod toolchain, which builds the released binaries.
+        env:
+          GOTOOLCHAIN: go1.27.1
+        run: go install github.com/goreleaser/goreleaser/v2@v2.18.2
       - name: Validate release configuration
-        run: go run github.com/goreleaser/goreleaser/v2@v2.18.2 check
+        run: '"$(go env GOPATH)/bin/goreleaser" check'
       - name: Build CLI archives and Debian packages without publishing
-        run: go run github.com/goreleaser/goreleaser/v2@v2.18.2 release --clean --parallelism 1 --skip=publish,announce
+        run: '"$(go env GOPATH)/bin/goreleaser" release --clean --parallelism 1 --skip=publish,announce'
       - name: Verify Debian metadata
         run: |
           for package in dist/*.deb; do
