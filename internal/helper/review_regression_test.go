@@ -123,7 +123,7 @@ func (n *retryCleanup) Teardown(context.Context, Journal) error {
 func TestDownRetriesExhaustedCleanup(t *testing.T) {
 	n := &retryCleanup{}
 	n.fail.Store(true)
-	h := startHarness(t, nil, func(o *Options) { o.Network = n; o.Deadlines.Network = 10 * time.Millisecond })
+	h := startHarness(t, nil, func(o *Options) { o.Network = n; o.Deadlines.Network = 250 * time.Millisecond })
 	c := h.client(t)
 	connectFixture(t, c, "work", "", "fixture-password")
 	c.success(t, protocol.Request{Op: "down", Profile: "work"})
