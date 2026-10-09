@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package helpercmd provides helper command parsing without embedding privileged
 // lifecycle logic in the executable entry point. Errors contain no credential data.
 package helpercmd

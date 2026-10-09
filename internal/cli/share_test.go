@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package cli tests shared configuration through the existing helper socket fixtures.
 package cli
 

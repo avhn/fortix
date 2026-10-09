@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Command fortix-helper runs the privileged local service or its private pinentry
 // responder. All command parsing and lifecycle implementation live in internal packages.
 package main

@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package helpercmd tests installation dispatch without invoking privileged operations.
 package helpercmd
 

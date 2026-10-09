@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package cli verifies socket commands against the helper with isolated storage and a fake VPN.
 package cli
 

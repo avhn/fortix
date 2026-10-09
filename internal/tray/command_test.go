@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package tray tests desktop command parsing without native or privileged side effects.
 package tray
 

@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Command fakeofv simulates a bounded openfortivpn transcript without networking.
 // Tests select a scenario through the validated realm field, never ambient secrets.
 package main

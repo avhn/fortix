@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package cli tests helper-backed commands and offline syntax through isolated protocol fixtures.
 package cli
 

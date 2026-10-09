@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package cli exercises credential lifetime, prompt backpressure, and actionable diagnostics.
 package cli
 

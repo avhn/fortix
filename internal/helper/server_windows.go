@@ -35,6 +35,8 @@ type Options struct {
 	MaxConnections int
 	IdleTimeout    time.Duration
 	RecordTimeout  time.Duration
+	// Ready runs once after storage recovery and pipe creation, before accepting clients.
+	Ready func()
 }
 
 // Server manages a bounded connection registry and independent profile supervisors.
@@ -337,6 +339,9 @@ func (s *Server) Serve(ctx context.Context) error {
 		return err
 	}
 	defer listener.Close()
+	if s.opts.Ready != nil {
+		s.opts.Ready()
+	}
 	stop := context.AfterFunc(s.ctx, func() { _ = listener.Close() })
 	defer stop()
 	err = s.accept(listener)

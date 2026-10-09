@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package client tests correlation, cancellation, authorization, and bounded framing without privileges.
 package client
 

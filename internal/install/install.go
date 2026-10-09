@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package install installs and removes the privileged helper and its service.
 // Callers must explicitly invoke it as root. Commands, ownership changes and
 // machine paths are injectable so tests never need privileged access.

@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package helpercmd also dispatches explicit installation and removal commands.
 package helpercmd
 

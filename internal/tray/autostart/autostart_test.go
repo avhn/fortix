@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package autostart tests registration rendering and isolated user filesystem writes.
 package autostart
 

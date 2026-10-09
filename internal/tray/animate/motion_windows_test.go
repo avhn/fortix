@@ -1,12 +1,9 @@
-//go:build darwin || linux
-
 // Package animate tests read-only preference probes and malformed native output.
 package animate
 
 import (
 	"context"
 	"errors"
-	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -95,39 +92,4 @@ func FuzzParseMotion(f *testing.F) {
 			}
 		}
 	})
-}
-
-// TestAbsentDarwinPreference permits the default only for the exact missing-key
-// diagnostic on a nonzero exit; other failures and cancellation stay Unknown.
-func TestAbsentDarwinPreference(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	var exit *exec.ExitError
-	if err := exec.CommandContext(ctx, "/usr/bin/false").Run(); !errors.As(err, &exit) {
-		t.Fatalf("need a nonzero exit for fixture: %v", err)
-	}
-	missing := "The domain/default pair of (com.apple.universalaccess, reduceMotion) does not exist"
-	for _, tc := range []struct {
-		platform, stderr string
-		cancelled        bool
-		want             Motion
-	}{
-		{"darwin", missing, false, Allow},
-		{"linux", missing, false, Unknown},
-		{"darwin", "The domain/default pair of (other, reduceMotion) does not exist", false, Unknown},
-		{"darwin", "permission denied", false, Unknown},
-		{"darwin", "", false, Unknown},
-		{"darwin", missing, true, Unknown},
-	} {
-		probeCtx, stop := context.WithCancel(context.Background())
-		if tc.cancelled {
-			stop()
-		}
-		runner := &probeRunner{err: &exec.ExitError{ProcessState: exit.ProcessState, Stderr: []byte(tc.stderr)}}
-		got := (SystemMotion{Platform: tc.platform, Runner: runner}).Read(probeCtx)
-		stop()
-		if got != tc.want {
-			t.Fatalf("%+v: got %v", tc, got)
-		}
-	}
 }

@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Command fortix-tray runs the unprivileged desktop controller or configures
 // next-login autostart. Connection and UI behavior live in internal packages.
 package main
