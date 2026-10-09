@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"time"
 )
 
@@ -33,8 +34,8 @@ func readContext(ctx context.Context, r io.Reader, p []byte) (int, error) {
 		}
 		n, err := r.Read(p)
 		finish()
-		if ctx.Err() != nil {
-			return 0, ctx.Err()
+		if err := contextError(ctx, err); err != nil {
+			return 0, err
 		}
 		return n, err
 	}
@@ -60,8 +61,8 @@ func writeContext(ctx context.Context, w io.Writer, p []byte) (int, error) {
 		}
 		n, err := w.Write(p)
 		finish()
-		if ctx.Err() != nil {
-			return 0, ctx.Err()
+		if err := contextError(ctx, err); err != nil {
+			return 0, err
 		}
 		return n, err
 	}
@@ -69,6 +70,19 @@ func writeContext(ctx context.Context, w io.Writer, p []byte) (int, error) {
 		return 0, errors.New("tunnel transport does not support cancellable writes")
 	}
 	return w.Write(p)
+}
+
+// contextError reports cancellation for an operation interrupted by its context. The
+// transport deadline equals the context deadline, so the transport can time out just
+// before the context's own timer fires; that timeout is the context's deadline too.
+func contextError(ctx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	if deadline, ok := ctx.Deadline(); ok && errors.Is(err, os.ErrDeadlineExceeded) && !time.Now().Before(deadline) {
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 // interruptIO arms a context deadline and joins the cancellation callback before
