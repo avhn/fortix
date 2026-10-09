@@ -108,9 +108,17 @@ func removeJournalAt(dir *os.File, id string) error {
 	return dir.Sync()
 }
 
+// batchNetworkRecovery optionally rebuilds shared resource references from every
+// validated startup journal before cleanup. Implementations must preserve borrowed
+// resources and retain recoverable ownership metadata when reconciliation fails.
+type batchNetworkRecovery interface {
+	RecoverAll(context.Context, []Journal) error
+}
+
 // recover reconciles bounded private journals before opening control sockets.
-// Invalid records block startup. A reused PID is never signalled; owned network
-// recovery still runs, then the stale record is removed only after success.
+// Invalid records block startup before mutation. Every recorded process is stopped
+// before shared network recovery begins; a reused PID is never signalled. Batch-capable
+// networks receive all journals together, and records are removed only after success.
 func (s *Server) recover(ctx context.Context) error {
 	dir := s.stateDir
 	if dir == nil {
@@ -126,6 +134,7 @@ func (s *Server) recover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	var journals []Journal
 	for _, entry := range entries {
 		if !strings.HasSuffix(entry.Name(), ".json") {
 			continue
@@ -138,20 +147,40 @@ func (s *Server) recover(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
+		journals = append(journals, j)
+	}
+	for _, j := range journals {
 		if err := recoverProcess(ctx, j); err != nil {
 			return err
 		}
-		budget := s.opts.Deadlines.Network
-		if budget <= 0 {
-			budget = session.DefaultDeadlines().Network
-		}
-		recoveryCtx, cancel := context.WithTimeout(ctx, budget)
-		err = s.opts.Network.Recover(recoveryCtx, j)
+	}
+	budget := s.opts.Deadlines.Network
+	if budget <= 0 {
+		budget = session.DefaultDeadlines().Network
+	}
+	if batch, ok := s.opts.Network.(batchNetworkRecovery); ok && len(journals) > 0 {
+		// Preserve the per-record budget while bounding the complete startup batch.
+		recoveryCtx, cancel := context.WithTimeout(ctx, budget*time.Duration(len(journals)))
+		err := batch.RecoverAll(recoveryCtx, journals)
 		cancel()
 		if err != nil {
 			return err
 		}
-		if err := removeJournalAt(dir, id); err != nil {
+		for _, j := range journals {
+			if err := removeJournalAt(dir, j.Profile); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, j := range journals {
+		recoveryCtx, cancel := context.WithTimeout(ctx, budget)
+		err := s.opts.Network.Recover(recoveryCtx, j)
+		cancel()
+		if err != nil {
+			return err
+		}
+		if err := removeJournalAt(dir, j.Profile); err != nil {
 			return err
 		}
 	}

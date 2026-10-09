@@ -19,8 +19,10 @@ import (
 
 // Run dispatches pinentry by executable basename or starts the helper service.
 // Development roots are accepted only for non-root callers and contain every path,
-// including the pinentry executable, and disable host networking. Normal service
-// execution requires root and uses owned route/DNS transactions.
+// including the pinentry executable, and disable host networking and native device
+// allocation. Normal service execution requires root, selects each profile's backend,
+// and uses owned route/DNS transactions. External executables are verified only when
+// an openfortivpn attempt starts; password-only native service needs neither of them.
 func Run(ctx context.Context, argv []string, in io.Reader, out, diagnostics io.Writer) error {
 	if len(argv) == 0 {
 		return errors.New("missing executable name")

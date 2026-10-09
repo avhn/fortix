@@ -223,9 +223,9 @@ func waitUntilFinished(pid int, inspect func(int) (bool, error), interval time.D
 	}
 }
 
-// scanOutput parses bounded stdout records and retains only redacted diagnostics
-// from either stream. Overlong lines fail the attempt; scanner errors contain no
-// input bytes. Parser state is isolated to this attempt's stdout stream.
+// scanOutput parses bounded stdout records and route failures from either stream.
+// Other stderr text remains diagnostic only. Overlong lines fail the attempt;
+// scanner errors contain no input bytes. Parser state is isolated per stream.
 func (a *supervisor) scanOutput(r io.Reader, attempt uint64, log *rotatingLog, stdout bool) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 4096), protocol.MaxLine+1)
@@ -240,8 +240,10 @@ func (a *supervisor) scanOutput(r io.Reader, attempt uint64, log *rotatingLog, s
 			return
 		}
 		a.server.emit(protocol.Event{Type: "log", Profile: a.id, Attempt: attempt, Line: line}, nil)
-		if stdout {
-			for _, event := range parser.Parse(scanner.Text()) {
+		for _, event := range parser.Parse(scanner.Text()) {
+			// Route-tool stderr can report failure even when the child exits successfully.
+			_, routeFailure := event.(openfortivpn.RouteRejected)
+			if stdout || routeFailure {
 				emit(event)
 			}
 		}

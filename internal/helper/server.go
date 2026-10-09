@@ -16,6 +16,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/network"
 	"github.com/avhn/fortix/internal/paths"
 	"github.com/avhn/fortix/internal/protocol"
@@ -24,11 +25,14 @@ import (
 
 // Options configures helper paths and injectable policy. Zero limits use bounded
 // defaults. Network must honor context cancellation; nil selects owned host networking.
+// Backends overrides selected transports for tests; nil uses production adapters,
+// except native kernel allocation is disabled for isolated development paths.
 type Options struct {
 	Paths          paths.Paths
 	Authorize      Authorizer
 	Logger         *slog.Logger
 	Network        Network
+	Backends       map[string]backend.Backend
 	Deadlines      session.Deadlines
 	MaxConnections int
 	IdleTimeout    time.Duration
@@ -82,6 +86,14 @@ type connection struct {
 // New initializes an inert server. It performs no filesystem or privileged work.
 // Invalid limits and incomplete path configurations fail before any listener opens.
 func New(opts Options) (*Server, error) {
+	backends := make(map[string]backend.Backend, len(opts.Backends)+1)
+	for name, implementation := range opts.Backends {
+		backends[name] = implementation
+	}
+	if backends["native"] == nil {
+		backends["native"] = defaultNativeBackend(opts.Paths.SkipTrust)
+	}
+	opts.Backends = backends
 	if opts.Authorize == nil {
 		opts.Authorize = Authorize
 	}

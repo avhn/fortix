@@ -10,11 +10,9 @@ import (
 	"os/exec"
 	"slices"
 	"sync"
-	"syscall"
 	"time"
 
-	"golang.org/x/sys/unix"
-
+	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/network"
 	"github.com/avhn/fortix/internal/openfortivpn"
 	"github.com/avhn/fortix/internal/profile"
@@ -73,6 +71,8 @@ type controlInput struct {
 	ask                 *pendingPIN
 	attempt             uint64
 	reply               chan controlReply
+	link                backend.LinkIdentity
+	ctx                 context.Context
 }
 
 // controlReply acknowledges a client action with public state or a stable failure.
@@ -80,6 +80,7 @@ type controlReply struct {
 	status Status
 	code   protocol.Code
 	detail string
+	err    error
 }
 
 // supervisor owns one reducer, timer, pending challenge, and child process at a time.
@@ -107,11 +108,12 @@ type supervisor struct {
 	log           *rotatingLog
 	networkCancel context.CancelFunc
 	networkDone   <-chan struct{}
+	tunnel        backend.Tunnel
 }
 
 // newSupervisor initializes an idle actor without starting goroutines or children.
 func newSupervisor(s *Server, p *profile.Profile) *supervisor {
-	a := &supervisor{id: p.ID, server: s, profile: p, state: session.New(p.ID, session.Options{MFAMode: p.MFA.Mode, Deadlines: s.opts.Deadlines}), controls: make(chan controlInput), events: make(chan session.Event, 128), done: make(chan struct{}), stopped: make(chan struct{})}
+	a := &supervisor{id: p.ID, server: s, profile: p, state: session.New(p.ID, session.Options{Backend: p.Backend, MFAMode: p.MFA.Mode, Deadlines: s.opts.Deadlines}), controls: make(chan controlInput), events: make(chan session.Event, 128), done: make(chan struct{}), stopped: make(chan struct{})}
 	a.publish()
 	return a
 }
@@ -279,7 +281,7 @@ func (a *supervisor) control(input controlInput) bool {
 		a.releaseNetworkReservation()
 		a.profile = input.profile
 		attempt := a.state.Attempt
-		a.state = session.New(input.profile.ID, session.Options{MFAMode: input.profile.MFA.Mode, Deadlines: a.server.opts.Deadlines})
+		a.state = session.New(input.profile.ID, session.Options{Backend: input.profile.Backend, MFAMode: input.profile.MFA.Mode, Deadlines: a.server.opts.Deadlines})
 		a.state.Attempt = attempt
 		a.publish()
 	case "retire":
@@ -306,6 +308,8 @@ func (a *supervisor) control(input controlInput) bool {
 		e := a.event(session.Trust)
 		e.Digest = input.digest
 		a.reduce(e)
+	case "register_link":
+		reply.err = a.registerLink(input)
 	case "ask":
 		if input.attempt != a.state.Attempt || a.pending != nil || (a.state.Phase != session.Starting && a.state.Phase != session.Authenticating) {
 			input.ask.reply <- pinReply{Cancel: true}
@@ -364,6 +368,16 @@ func (a *supervisor) reduce(event session.Event) {
 			}
 		}
 	}
+	if event.Kind == session.NetworkApplied && event.Profile == a.id && event.Attempt == a.state.Attempt && a.state.Phase == session.Configuring {
+		if active, ok := a.tunnel.(interface{ Activate(context.Context) error }); ok {
+			ctx, cancel := context.WithTimeout(context.Background(), a.state.Deadlines.Network)
+			err := active.Activate(ctx)
+			cancel()
+			if err != nil {
+				event = a.networkFailure(err)
+			}
+		}
+	}
 	next, effects := session.Next(a.state, event)
 	a.state = next
 	a.publish()
@@ -390,8 +404,15 @@ func (a *supervisor) effects(effects []session.Effect) {
 				if errors.As(err, &conflict) {
 					a.reduce(a.networkFailure(err))
 				} else {
-					a.server.opts.Logger.Error("openfortivpn start failed", "profile", a.id, "error", err)
+					message := "openfortivpn start failed"
+					if a.profile.Backend == "native" {
+						message = "native backend start failed"
+					}
+					a.server.opts.Logger.Error(message, "profile", a.id, "backend", a.profile.Backend, "error", err)
 					detail := "openfortivpn not found or not trusted; see helper log"
+					if a.profile.Backend == "native" {
+						detail = "native backend could not start; see helper log"
+					}
 					if a.log != nil {
 						if logErr := a.log.write(detail + ": " + a.log.redact(err.Error())); logErr != nil {
 							a.server.opts.Logger.Error("profile start log failed", "profile", a.id, "error", logErr)
@@ -409,9 +430,9 @@ func (a *supervisor) effects(effects []session.Effect) {
 			if a.networkCancel != nil {
 				a.networkCancel()
 			}
-			a.signal(syscall.SIGTERM)
+			a.stopTunnel(false)
 		case session.KillProcess:
-			a.signal(syscall.SIGKILL)
+			a.stopTunnel(true)
 		case session.CancelChallenge:
 			a.cancelPIN()
 		case session.ApplyNetwork:
@@ -436,117 +457,6 @@ func (a *supervisor) effects(effects []session.Effect) {
 			a.server.emit(protocol.Event{Type: "cert", Profile: e.Profile, Attempt: e.Attempt, Digest: e.Certificate.Digest, Subject: e.Certificate.Subject, Issuer: e.Certificate.Issuer}, a.origin, a.ownerUID)
 		case session.PersistTrust: // The synchronous trust operation already persisted the exact captured digest.
 		}
-	}
-}
-
-// start verifies programs, constructs the allowlisted command/environment, and starts
-// a fresh process group. Pipe draining and reaping are delegated to one owned worker.
-// Journal failures kill and reap the child before returning a failure to the reducer.
-func (a *supervisor) start() error {
-	a.command = nil
-	a.journal = Journal{Profile: a.profile.ID, Attempt: a.state.Attempt}
-	log, err := openLogAt(a.server.logDir, a.profile.ID)
-	if err != nil {
-		return err
-	}
-	if a.log != nil {
-		_ = a.log.Close()
-	}
-	a.log = log
-	if err := a.checkNetworkUp(); err != nil {
-		return err
-	}
-	executable, err := a.server.verifyExecutables()
-	if err != nil {
-		return err
-	}
-	token, err := randomToken()
-	if err != nil {
-		return err
-	}
-	argv, env, err := openfortivpn.BuildCommand(a.profile, openfortivpn.Options{Executable: executable, Pinentry: a.server.opts.Paths.Pinentry, PinentrySocket: a.server.opts.Paths.PinentrySocket, AttemptToken: token})
-	if err != nil {
-		return err
-	}
-	log.protect([]byte(token))
-	config, err := openfortivpn.Config(a.profile)
-	if err != nil {
-		return err
-	}
-	configR, configW, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = configR.Close(); _ = configW.Close(); clear(config) }()
-	if _, err := configW.Write(config); err != nil {
-		return err
-	}
-	if err := configW.Close(); err != nil {
-		return err
-	}
-	outR, outW, err := os.Pipe()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = outW.Close() }()
-	errR, errW, err := os.Pipe()
-	if err != nil {
-		_ = outR.Close()
-		return err
-	}
-	defer func() { _ = errW.Close() }()
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.ExtraFiles = []*os.File{configR}
-	cmd.Env = env
-	cmd.Dir = openfortivpn.WorkingDirectory
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Stdout = outW
-	cmd.Stderr = errW
-	a.token = token
-	a.server.mu.Lock()
-	a.server.tokens[token] = tokenBinding{a, a.state.Attempt}
-	a.server.mu.Unlock()
-	// Persist intent before spawning, then replace it with the verified birth identity.
-	if err := writeJournalAt(a.server.stateDir, a.journal); err != nil {
-		_ = outR.Close()
-		_ = errR.Close()
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		_ = outR.Close()
-		_ = errR.Close()
-		return err
-	}
-	_ = outW.Close()
-	_ = errW.Close()
-	start, err := processStart(cmd.Process.Pid)
-	a.journal = Journal{Profile: a.profile.ID, Attempt: a.state.Attempt, PID: cmd.Process.Pid, StartTime: start}
-	if err == nil {
-		err = writeJournalAt(a.server.stateDir, a.journal)
-	}
-	if err != nil {
-		_ = unix.Kill(-cmd.Process.Pid, unix.SIGKILL)
-		_ = cmd.Wait()
-		_ = outR.Close()
-		_ = errR.Close()
-		return err
-	}
-	a.command = cmd
-	attempt := a.state.Attempt
-	a.children.Add(1)
-	go func() { defer a.children.Done(); a.drainAndWait(cmd, outR, errR, attempt, log) }()
-	return nil
-}
-
-// signal addresses only the current child process group, checking the kernel birth
-// time first. A missing or reused PID is never signalled from a stale journal.
-func (a *supervisor) signal(signal syscall.Signal) {
-	if a.command == nil || a.journal.PID < 1 {
-		return
-	}
-	start, err := processStart(a.journal.PID)
-	if err == nil && start == a.journal.StartTime {
-		_ = unix.Kill(-a.journal.PID, signal)
 	}
 }
 
@@ -578,6 +488,7 @@ func (a *supervisor) cancelPIN() {
 func (a *supervisor) network(effect session.Effect, remove bool) {
 	p := a.profile
 	journal := a.journal
+	tunnel := a.tunnel
 	previous := a.networkDone
 	if remove && a.networkCancel != nil {
 		a.networkCancel()
@@ -619,6 +530,11 @@ func (a *supervisor) network(effect session.Effect, remove bool) {
 			if err == nil {
 				err = a.server.opts.Network.Teardown(ctx, journal)
 			}
+			if err == nil {
+				if retained, ok := tunnel.(interface{ Release(context.Context) error }); ok {
+					err = retained.Release(ctx)
+				}
+			}
 			if err == nil && a.server.stateDir != nil {
 				err = removeJournalAt(a.server.stateDir, journal.Profile)
 			}
@@ -639,7 +555,16 @@ func (a *supervisor) network(effect session.Effect, remove bool) {
 				err = persist(journal)
 			}
 			if err == nil {
-				err = a.server.opts.Network.Apply(ctx, p, effect, &journal, persist)
+				if p.Backend == "native" {
+					if native, ok := a.server.opts.Network.(NativeNetwork); ok {
+						err = native.ConfigureNative(ctx, effect, &journal, persist)
+					} else {
+						err = errors.New("native network configuration unavailable")
+					}
+				}
+				if err == nil {
+					err = a.server.opts.Network.Apply(ctx, p, effect, &journal, persist)
+				}
 			}
 			if err != nil {
 				event.Kind = session.AttemptFailed
