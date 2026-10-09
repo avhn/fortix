@@ -1,4 +1,4 @@
-//go:build darwin || linux
+//go:build windows
 
 // Package userconfig reads strict user preferences and writes them atomically.
 // Missing files yield defaults; malformed or insecure files return errors, not defaults.
@@ -7,17 +7,14 @@ package userconfig
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/avhn/fortix/internal/paths"
+	"github.com/avhn/fortix/internal/winfs"
 )
 
 // maxBytes bounds preference input to prevent accidental unbounded reads.
@@ -88,124 +85,70 @@ func Decode(r io.Reader) (Config, error) {
 	return cfg, nil
 }
 
-// Load reads p.Preferences without following a final symlink; absent preferences use defaults.
-// Non-regular files, permissive modes, cancelled contexts, and decoding failures return errors.
+// Load reads preferences from a pinned directory with a protected current-user/SYSTEM DACL.
+// Missing directories or files use defaults; links, foreign grants and malformed JSON fail.
 func Load(ctx context.Context, p paths.Paths) (Config, error) {
 	if err := ctx.Err(); err != nil {
 		return Config{}, err
 	}
-	if !filepath.IsAbs(p.Preferences) {
-		return Config{}, errors.New("preferences path must be absolute")
+	if !winfs.ValidPath(p.Preferences) {
+		return Config{}, errors.New("preferences path must be a canonical local drive path")
 	}
-	dir := filepath.Dir(p.Preferences)
-	info, err := os.Lstat(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return Defaults(), nil
-	}
+	policy, err := winfs.UserPolicy()
 	if err != nil {
-		return Config{}, fmt.Errorf("inspect preference directory: %w", err)
+		return Config{}, err
 	}
-	if !info.IsDir() || info.Mode().Perm()&0022 != 0 {
-		return Config{}, errors.New("preference directory must be real and not group- or world-writable")
-	}
-	root, err := os.OpenRoot(dir)
-	if errors.Is(err, os.ErrNotExist) {
+	root, err := winfs.OpenRoot(filepath.Dir(p.Preferences))
+	if winfs.IsNotExist(err) {
 		return Defaults(), nil
 	}
 	if err != nil {
 		return Config{}, fmt.Errorf("open preference directory: %w", err)
 	}
 	defer func() { _ = root.Close() }()
-	f, err := root.OpenFile(filepath.Base(p.Preferences), os.O_RDONLY|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
-	if errors.Is(err, os.ErrNotExist) {
+	if err := winfs.CheckSecurity(root.Handle(), policy, true); err != nil {
+		return Config{}, fmt.Errorf("inspect preference directory: %w", err)
+	}
+	file, err := root.Open(filepath.Base(p.Preferences), policy)
+	if winfs.IsNotExist(err) {
 		return Defaults(), nil
 	}
 	if err != nil {
 		return Config{}, fmt.Errorf("open preferences: %w", err)
 	}
-	defer func() { _ = f.Close() }()
-	info, err = f.Stat()
+	defer func() { _ = file.Close() }()
+	cfg, err := Decode(file)
 	if err != nil {
 		return Config{}, err
 	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0022 != 0 {
-		return Config{}, errors.New("preferences must be regular and not group- or world-writable")
+	if err := ctx.Err(); err != nil {
+		return Config{}, err
 	}
-	return Decode(f)
+	return cfg, nil
 }
 
-// Save atomically replaces p.Preferences with a synced 0600 file in a 0700 directory.
-// It refuses symlink directories and non-regular existing targets, cleans temporary files,
-// and preserves the previous file on failures before replacement. A directory sync
-// failure is reported after replacement, when the new file is already visible.
+// Save flushes and atomically replaces preferences with an explicit private DACL.
+// Existing insecure directories or files are refused, not silently adopted or repaired.
+// All creation and publication occurs relative to pinned non-reparse directory handles.
 func Save(ctx context.Context, p paths.Paths, cfg Config) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if !filepath.IsAbs(p.Preferences) {
-		return errors.New("preferences path must be absolute")
+	if !winfs.ValidPath(p.Preferences) {
+		return errors.New("preferences path must be a canonical local drive path")
 	}
-	dir := filepath.Dir(p.Preferences)
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	policy, err := winfs.UserPolicy()
+	if err != nil {
+		return err
+	}
+	root, err := winfs.SecureDirectory(filepath.Dir(p.Preferences), policy)
+	if err != nil {
 		return fmt.Errorf("create preference directory: %w", err)
 	}
-	info, err := os.Lstat(dir)
-	if err != nil {
-		return err
-	}
-	if !info.IsDir() {
-		return errors.New("preference directory must not be a symlink")
-	}
-	root, err := os.OpenRoot(dir)
-	if err != nil {
-		return err
-	}
 	defer func() { _ = root.Close() }()
-	directory, err := root.Open(".")
-	if err != nil {
-		return err
-	}
-	defer func() { _ = directory.Close() }()
-	if err := directory.Chmod(0700); err != nil {
-		return err
-	}
-	name := filepath.Base(p.Preferences)
-	if info, err := root.Lstat(name); err == nil {
-		if !info.Mode().IsRegular() {
-			return errors.New("preferences target must be a regular file")
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	// A root-relative exclusive file keeps temporary writes inside the opened directory.
-	temporary := fmt.Sprintf(".config-%x", rand.Text())
-	f, err := root.OpenFile(temporary, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = root.Remove(temporary) }()
 	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err == nil {
-		err = f.Chmod(0600)
-	}
-	if err == nil {
-		_, err = f.Write(append(data, '\n'))
-	}
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
 	if err != nil {
 		return err
 	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := root.Rename(temporary, name); err != nil {
-		return err
-	}
-	return directory.Sync()
+	return root.AtomicWrite(ctx, filepath.Base(p.Preferences), append(data, '\n'), policy)
 }
