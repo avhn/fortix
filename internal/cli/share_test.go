@@ -179,15 +179,16 @@ func TestProfileImport(t *testing.T) {
 				if !strings.Contains(out, "fortix up "+p.ID) || !strings.Contains(out, "keychain") {
 					t.Fatal("missing connection hint")
 				}
-				if tc.name == "merge" {
+				switch {
+				case tc.name == "merge":
 					if p.ID != "work" || p.Username != "existing-user" || !reflect.DeepEqual(p.Routes.Include, []string{"192.0.2.128/25"}) || !reflect.DeepEqual(p.DNS.Domains, []string{"new.example.com"}) {
 						t.Fatalf("merge replaced identity or appended lists: %+v", p)
 					}
-				} else if strings.HasPrefix(tc.name, "merge gateway") {
+				case strings.HasPrefix(tc.name, "merge gateway"):
 					if p.Username != "existing-user" || p.Gateway.Host != "vpn.example.net" {
 						t.Fatalf("confirmed gateway merge: %+v", p)
 					}
-				} else if p.Username != "local-user" {
+				case p.Username != "local-user":
 					t.Fatalf("incorrect local username: %q", p.Username)
 				}
 				if tc.name == "overrides" && (p.ID != "other" || p.Name != "Local name") {
