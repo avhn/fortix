@@ -47,6 +47,7 @@ paths have no schema fields and are rejected.
 | `mfa.algorithm` | `SHA1`, `SHA256`, or `SHA512`, allowed only for `totp` | `SHA1` for `totp` |
 | `routes.mode` | `gateway`, `custom`, or `full` | `gateway` |
 | `routes.include` | Nonempty list of canonical, masked IPv4 CIDRs; /8..32; no duplicate/overlapping entries; allowed only for `custom` | Absent |
+| `routes.exclude` | 1..64 canonical, masked IPv4 CIDRs; /8..32; no duplicate/overlapping entries; allowed only for `gateway` and `full` with the native backend | Absent |
 | `routes.preserve_lan` | Boolean; explicit false is preserved | `true` |
 | `dns.mode` | `none` or `split` | `none` |
 | `dns.domains` | 1..32 lowercase DNS names with at least two labels, without wildcard/trailing dot or duplicates; allowed only for `split` | Absent |
@@ -56,7 +57,7 @@ with no leading/trailing label hyphen. IP address literals must not contain a
 zone identifier. Do not include `https://` in a gateway host.
 
 Objects whose fields all have defaults can be omitted. `gateway` must still
-supply a host. `routes.include` and `dns.domains` must be **absent**, not empty
+supply a host. `routes.include`, `routes.exclude` and `dns.domains` must be **absent**, not empty
 arrays, when their modes do not allow them. Non-TOTP modes forbid all TOTP
 parameters, including explicit zero values. `routes.preserve_lan: null` is
 invalid, not an instruction to use the default.
@@ -145,6 +146,30 @@ the strict behavior: any overlap with a local network refuses the attempt.
 `custom` routes are used exactly as listed. The `/1` fallback is not carved;
 the connected LAN route is more specific and stays local. The openfortivpn
 backend installs routes itself and does not apply `preserve_lan`.
+
+### Two gateways that push the same range
+
+Two companies can push the same network, for example both gateways send
+`198.18.3.0/24`. The second profile to connect is then refused, and the app shows
+which profile holds the range: "First is already using 198.18.3.0/24. Disconnect
+First to connect Second, or exclude 198.18.3.0/24 in Second." In the macOS app
+the reason appears in gray under the profile in the menu bar, and a
+notification is posted once per failed attempt.
+
+`routes.exclude` resolves this without listing every route by hand. With the
+native backend in `gateway` or `full` mode, the excluded ranges are removed
+from what the gateway pushes before any other check: a pushed route inside an
+excluded range is dropped, and a broader one is split around it. Keep the shared
+range in the profile that needs it and exclude it in the other:
+
+```json
+"routes": { "mode": "gateway", "exclude": ["198.18.3.0/24"] }
+```
+
+Both profiles then connect at the same time; traffic for the excluded range
+goes to the other VPN. Hosts the second company runs inside that range are not
+reachable through its tunnel. The `/1` halves of a full tunnel are not split,
+because the other VPN's narrower route already takes precedence over them.
 
 With `split`, the helper uses negotiated IPv4 DNS servers, with XML fallback
 for native if IPCP does not supply DNS. It configures only `dns.domains`:

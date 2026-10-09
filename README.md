@@ -47,8 +47,9 @@ client-certificate authentication, DTLS, or IPv6 tunnel routing. Native PPP
 does not support PAP/CHAP or compression. The schema accepts `totp` and
 `static` MFA modes, but clients currently prompt for their codes; automatic
 seed/static-secret storage is not implemented. With the native backend,
-`preserve_lan` (default true) keeps local networks out of gateway-pushed routes;
-the openfortivpn backend does not apply it.
+`preserve_lan` (default true) keeps local networks out of gateway-pushed routes,
+and `routes.exclude` leaves listed ranges out of them so two VPNs that push the
+same network can run together; the openfortivpn backend applies neither.
 
 ## Installation
 
@@ -425,7 +426,10 @@ address pools; changing routes alone does not fix duplicate local addresses.
 With the native backend and `preserve_lan` on (the default), a pushed route that
 overlaps a Wi-Fi or Ethernet network is narrowed around it, so a gateway that
 pushes `192.168.0.0/22` does not take a home LAN on `192.168.1.0/24`; the helper
-log lists the routes it installed. Clashes with another VPN are still refused.
+log lists the routes it installed. Clashes with another VPN are still refused,
+with a message naming the profile that holds the range; list that range in
+`routes.exclude` to leave it to the other VPN and connect both
+([details](docs/profiles.md#two-gateways-that-push-the-same-range)).
 `custom` uses only the included prefixes. Native `full` uses pushed routes;
 when no split routes are supplied, or defaults are pushed, it installs two
 owned /1 routes plus a physical-link exception for the actual gateway IPv4
