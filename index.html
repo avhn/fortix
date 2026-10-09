@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>fortix</title>
+<meta name="description" content="FortiGate SSL VPN profile manager for macOS and Debian/Ubuntu.">
+<style>
+:root { color-scheme: light dark; --fg: #1d1d1f; --bg: #ffffff; --muted: #6e6e73; --code: #f2f2f4; --link: #0a5bd3; }
+@media (prefers-color-scheme: dark) { :root { --fg: #f5f5f7; --bg: #161617; --muted: #a1a1a6; --code: #26262a; --link: #6aa8ff; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 48px 16px; }
+h1 { font-size: 1.9rem; margin: 0 0 8px; }
+h2 { font-size: 1.15rem; margin: 32px 0 8px; }
+p, li { color: var(--fg); }
+.lead { color: var(--muted); margin-top: 0; }
+a { color: var(--link); }
+pre { background: var(--code); padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 0.85rem; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body>
+<main>
+<h1>fortix</h1>
+<p class="lead">FortiGate SSL VPN profile manager for macOS and Debian/Ubuntu. The CLI, macOS menu-bar app, and Linux tray share a root helper.</p>
+<p>Source, documentation and releases: <a href="https://github.com/avhn/fortix">github.com/avhn/fortix</a></p>
+<h2>Homebrew</h2>
+<pre><code># Menu-bar app (arm64 macOS 13 or later); it installs its own helper
+brew install --cask avhn/tap/fortix
+
+# Or the CLI and helper only (macOS or Linux, amd64 or arm64)
+brew install avhn/tap/fortix
+sudo "$(brew --prefix)/bin/fortix-helper" install</code></pre>
+<h2>Debian and Ubuntu</h2>
+<p>Packages for amd64 and arm64 come from the signed <a href="apt/">apt repository</a>.</p>
+<pre><code>sudo apt-get update &amp;&amp; sudo apt-get install --yes ca-certificates curl gnupg
+(
+  set -eu
+  KEYDIR="$(mktemp -d)"; trap 'rm -rf "$KEYDIR"' EXIT
+  curl -fsSL https://avhn.github.io/fortix/apt/fortix-archive-keyring.gpg -o "$KEYDIR/key.gpg"
+  FINGERPRINT="$(gpg --batch --with-colons --show-keys "$KEYDIR/key.gpg" | awk -F: '$1 == "fpr" { print $10; exit }')"
+  test "$FINGERPRINT" = 7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06
+  sudo install -D -m 0644 "$KEYDIR/key.gpg" /etc/apt/keyrings/fortix-archive-keyring.gpg
+  echo 'deb [signed-by=/etc/apt/keyrings/fortix-archive-keyring.gpg] https://avhn.github.io/fortix/apt stable main' \
+    | sudo tee /etc/apt/sources.list.d/fortix.list &gt;/dev/null
+)
+sudo apt-get update
+sudo apt-get install --yes --no-install-recommends fortix
+sudo usermod -aG fortix "$(id -un)"</code></pre>
+</main>
+</body>
+</html>
