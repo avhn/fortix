@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package network tests owned resource matching and concurrent conflict reservations.
 package network
 

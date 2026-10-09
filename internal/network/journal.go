@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package network applies and reconciles owned VPN routes and split DNS settings.
 // Commands and interface discovery are injectable; failures retain recovery metadata.
 package network

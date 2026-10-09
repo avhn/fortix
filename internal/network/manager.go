@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 package network
 
 import (
@@ -12,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/paths"
 	"github.com/avhn/fortix/internal/profile"
 	"github.com/avhn/fortix/internal/session"
@@ -20,34 +21,6 @@ import (
 
 // commandWait bounds inherited command pipe waits after process termination.
 const commandWait = time.Second
-
-// ConflictError describes a safe, specific refusal rather than a command diagnostic.
-// Helpers map this type to CONFLICT and never automatically retry the attempt.
-type ConflictError struct{ Detail string }
-
-// Error returns the non-secret explanation of the refused network configuration.
-func (e *ConflictError) Error() string { return e.Detail }
-
-// profileConflict tells the user which connected profile holds a range and what to do.
-func profileConflict(other, p profile.Profile, prefix netip.Prefix) string {
-	if prefix.Bits() <= 1 {
-		return fullTunnelConflict(other, p)
-	}
-	return fmt.Sprintf("%s is already using %s. Disconnect %s to connect %s, or exclude %s in %s.",
-		profileLabel(other), prefix, profileLabel(other), profileLabel(p), prefix, profileLabel(p))
-}
-
-// fullTunnelConflict explains that only one profile may carry all traffic at a time.
-func fullTunnelConflict(other, p profile.Profile) string {
-	return fmt.Sprintf("%s is already sending all traffic through its tunnel. Disconnect %s to connect %s.",
-		profileLabel(other), profileLabel(other), profileLabel(p))
-}
-
-// lanConflict explains a route that would take over the network the computer is on.
-func lanConflict(prefix, local netip.Prefix, iface string) string {
-	return fmt.Sprintf("The VPN route %s overlaps your local network %s on %s. Connect from another network, or exclude that range in the profile.",
-		prefix, local, iface)
-}
 
 // Options configures platform paths, command execution and connected-link discovery.
 // OS defaults to the runtime platform; discovery and Runner default to host implementations.
@@ -64,21 +37,6 @@ type Options struct {
 	LinkExists      func(string) (bool, error)
 	VerifyInterface func(string, netip.Addr) error
 	InterfaceIndex  func(string) (int, error)
-}
-
-// tunnel reserves configured prefixes and full mode while an attempt is in flight.
-// Addresses and observed pushed routes are added as negotiation makes them available.
-// Only the configured local address can identify a native connected route, so
-// caller-supplied peers cannot exempt unrelated destinations from conflict checks.
-type tunnel struct {
-	profile    profile.Profile
-	localIP    netip.Addr
-	link       string
-	attempt    uint64
-	identity   backend.LinkIdentity
-	prefixes   []netip.Prefix
-	negotiated bool
-	configured bool
 }
 
 // Manager serializes ownership transactions and conflict reservations across profiles.
@@ -521,15 +479,6 @@ func (m *Manager) teardown(ctx context.Context, j Journal) error {
 	return m.releaseGateway(ctx, j)
 }
 
-// InterfaceError refuses network changes when the kernel cannot prove the tunnel link.
-// Its fixed diagnostic can be shown to clients without exposing host command output.
-type InterfaceError struct{}
-
-// Error returns the public explanation of the refused interface binding.
-func (*InterfaceError) Error() string {
-	return "tunnel interface missing or does not carry the negotiated local IP"
-}
-
 // verifyInterface compares the reported interface and local address with kernel state.
 // Missing links, unreadable addresses and mismatches fail before route or DNS writes.
 func verifyInterface(name string, address netip.Addr) error {
@@ -548,25 +497,4 @@ func verifyInterface(name string, address netip.Addr) error {
 		}
 	}
 	return &InterfaceError{}
-}
-
-// carrierNAT is the RFC 6598 shared address space, used for internal resolvers
-// alongside the RFC 1918 ranges that netip.Addr.IsPrivate covers.
-var carrierNAT = netip.MustParsePrefix("100.64.0.0/10")
-
-// internalNameservers keeps only private nameservers when the gateway pushes a
-// mix. Gateways often append a public resolver such as 8.8.8.8; resolvers query
-// every listed server, so its fast NXDOMAIN for internal names would win and be
-// cached. If no private server was negotiated, the list is returned unchanged.
-func internalNameservers(servers []netip.Addr) []netip.Addr {
-	var internal []netip.Addr
-	for _, server := range servers {
-		if server.IsPrivate() || carrierNAT.Contains(server) {
-			internal = append(internal, server)
-		}
-	}
-	if len(internal) == 0 {
-		return servers
-	}
-	return internal
 }
