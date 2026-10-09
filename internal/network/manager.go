@@ -468,6 +468,9 @@ func (m *Manager) teardown(ctx context.Context, j Journal) error {
 	for i := len(j.ResolverFiles) - 1; i >= 0; i-- {
 		failures = append(failures, m.removeResolver(j.Profile, j.ResolverFiles[i]))
 	}
+	if len(j.ResolverFiles) > 0 {
+		m.flushResolverCache(ctx)
+	}
 	if linkOwned && len(j.Routes) > 0 {
 		routes, err := m.routes(ctx)
 		if err != nil {

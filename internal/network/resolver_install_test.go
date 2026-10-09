@@ -1,9 +1,11 @@
 package network
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"golang.org/x/sys/unix"
@@ -41,5 +43,52 @@ func TestInstallResolverRename(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, ".stage-two")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("failed staging file remained: %v", err)
+	}
+}
+
+// TestResolverCacheFlush checks that macOS drops cached negative answers after resolver
+// files are published and again after they are removed, and that a failing flush never
+// fails the connection, since it only delays resolution until the cache entry expires.
+func TestResolverCacheFlush(t *testing.T) {
+	flushes := func(f *fakeRunner) int {
+		count := 0
+		for _, call := range f.calls {
+			if slices.Equal(call, []string{"/usr/bin/killall", "-HUP", "mDNSResponder"}) {
+				count++
+			}
+		}
+		return count
+	}
+	m, f := testManager(t, "darwin")
+	j, _, err := applyFixture(t, m, f, testProfile("work"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flushes(f) != 1 {
+		t.Fatalf("expected one flush after publishing resolvers, got %d", flushes(f))
+	}
+	if err := m.Teardown(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if flushes(f) != 2 {
+		t.Fatalf("expected a flush after removing resolvers, got %d", flushes(f))
+	}
+
+	m, f = testManager(t, "darwin")
+	f.fail = "mDNSResponder"
+	if _, _, err := applyFixture(t, m, f, testProfile("work")); err != nil {
+		t.Fatalf("a failed flush must not fail the connection: %v", err)
+	}
+
+	m, f = testManager(t, "linux")
+	j, _, err = applyFixture(t, m, f, testProfile("work"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := m.Teardown(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	if flushes(f) != 0 {
+		t.Fatal("linux must not signal mDNSResponder")
 	}
 }

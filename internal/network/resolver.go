@@ -198,7 +198,17 @@ func (m *Manager) applyResolvers(ctx context.Context, p *profile.Profile, effect
 			return fmt.Errorf("installing split DNS resolver failed: %w", err)
 		}
 	}
+	m.flushResolverCache(ctx)
 	return nil
+}
+
+// flushResolverCache asks mDNSResponder to drop cached answers after resolver files change.
+// While a tunnel is down its internal names have no public record, and mDNSResponder keeps
+// that negative answer for a while; without a flush the first lookups after connecting
+// fail even though the new resolver is already in place. The flush is best effort: a
+// failure only delays resolution until the cache entry expires, so it is never fatal.
+func (m *Manager) flushResolverCache(ctx context.Context) {
+	_, _ = m.runner.Run(ctx, []string{"/usr/bin/killall"}, "-HUP", "mDNSResponder")
 }
 
 // installResolver durably publishes complete bytes with an atomic no-replace rename.
