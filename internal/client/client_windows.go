@@ -1,5 +1,3 @@
-//go:build darwin || linux
-
 // Package client provides a cancellable, correlated connection to the local VPN helper.
 // Requests and events use bounded protocol framing; credential payloads are never logged.
 package client
@@ -21,7 +19,7 @@ import (
 )
 
 // Options selects an explicit socket or platform paths and an optional transport for tests.
-// A nonempty Socket overrides the environment; Dial must honor context cancellation.
+// A nonempty Socket overrides the environment; Dial must honor context cancellation; server identity is always checked before hello.
 type Options struct {
 	Socket        string
 	Paths         paths.Override
@@ -93,37 +91,50 @@ func (e *OperationError) Error() string {
 
 // permissionMessage describes how an administrator can restore socket group access.
 func permissionMessage() string {
-	return "permission denied: ask an administrator to add your account to group fortix (Linux: usermod -aG fortix <user>; macOS: dseditgroup -o edit -a <user> -t user fortix), then log out and back in"
+	return "permission denied: ask an administrator to add your account to the local fortix group (net localgroup fortix <user> /add), then sign out and back in"
 }
 
-// socketPath is the only environment read for FORTIX_SOCKET and validates platform overrides.
-// Explicit test sockets take precedence; invalid absolute paths fail before dialing.
+// socketPath accepts only the installed local pipe, never a remote or user-selected endpoint.
+// The fixed pipe is resolved independently of filesystem overrides and cannot be redirected.
 func socketPath(o Options) (string, error) {
 	socket := o.Socket
 	if socket == "" {
 		socket = os.Getenv("FORTIX_SOCKET")
 	}
-	if socket != "" {
-		o.Paths.ControlSocket = socket
+	if socket == "" {
+		socket = o.Paths.ControlSocket
 	}
+	o.Paths.ControlSocket = ""
 	p, err := paths.Resolve(o.Paths)
-	return p.ControlSocket, err
+	if err != nil {
+		return "", err
+	}
+	if socket != "" && socket != p.ControlSocket {
+		return "", errors.New("Windows control endpoint must be the local Fortix pipe")
+	}
+	return p.ControlSocket, nil
 }
 
-// Dial opens the control socket and verifies the hello protocol under a ten-second deadline.
+// Dial verifies the installed service before sending even the secret-free hello.
 // The returned client survives the dial context; Close ends its reader and outstanding calls.
 func Dial(ctx context.Context, o Options) (*Client, error) {
+	return dialVerified(ctx, o, verifyPipeServer)
+}
+
+// dialVerified makes identity checks injectable without allowing production dialers to bypass them.
+// No reader or writer starts until verification succeeds, including with an injected transport.
+func dialVerified(ctx context.Context, o Options, verify func(context.Context, net.Conn) error) (*Client, error) {
 	socket, err := socketPath(o)
 	if err != nil {
 		return nil, err
 	}
 	dial := o.Dial
 	if dial == nil {
-		dial = (&net.Dialer{}).DialContext
+		dial = dialPipe
 	}
 	handshake, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	conn, err := dial(handshake, "unix", socket)
+	conn, err := dial(handshake, "pipe", socket)
 	if err != nil {
 		if errors.Is(err, os.ErrPermission) {
 			return nil, fmt.Errorf("%s: %w", permissionMessage(), os.ErrPermission)
@@ -131,7 +142,15 @@ func Dial(ctx context.Context, o Options) (*Client, error) {
 		if handshake.Err() != nil {
 			return nil, handshake.Err()
 		}
-		return nil, errors.New("fortix helper is not running or its socket is unavailable; ask an administrator to install and start fortix-helper (Linux: systemctl start fortix-helper; macOS: launchctl kickstart system/com.github.avhn.fortix.helper)")
+		return nil, errors.New("fortix helper service is not installed or running; run fortix-helper install from an elevated terminal")
+	}
+	if err := verify(handshake, conn); err != nil {
+		_ = conn.Close()
+		return nil, errors.New("the Fortix helper service could not be verified")
+	}
+	if err := handshake.Err(); err != nil {
+		_ = conn.Close()
+		return nil, err
 	}
 	c := &Client{conn: conn, writes: make(chan struct{}, 1), pending: make(map[string]chan reply), done: make(chan struct{}), events: make(chan protocol.Event, 256), stopped: make(chan struct{}), discardLogs: o.DiscardLogs, subscribeLogs: o.SubscribeLogs}
 	c.writes <- struct{}{}
