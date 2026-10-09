@@ -262,6 +262,7 @@ final class AppModel: ObservableObject {
       return "This profile ID already exists. Edit the existing profile instead."
     }
     if let failure = error as? HelperFailure { return "\(failure.code): \(failure.message)" }
+    if let shared = error as? SharedProfileError { return sharedFailureText(shared) }
     if error as? CoreError == .stopFailed {
       return "Disconnect did not finish cleanly. Check the profile status before quitting."
     }
@@ -270,6 +271,21 @@ final class AppModel: ObservableObject {
     }
     return
       "The operation could not be completed. Check the helper and configuration, then try again."
+  }
+
+  /// SharedFailureText explains a rejected profile file using only fixed messages and schema paths.
+  /// A secret-like key is named by its fixed lowercase spelling; its value is never available here.
+  static func sharedFailureText(_ error: SharedProfileError) -> String {
+    switch error.kind {
+    case .secret:
+      return
+        "The profile file was rejected because it contains a secret field (\(error.field)). Profile files must never carry passwords, tokens, or cookies."
+    case .size: return "The profile file is larger than 1 MiB."
+    case .count: return "A profile file must contain 1 to 32 profiles."
+    default:
+      let location = error.field == "$" ? "" : "\(error.field): "
+      return "The profile file was rejected. \(location)\(error.message)."
+    }
   }
 
   /// Connect requests one profile without changing the stored backend or replaying after failure.

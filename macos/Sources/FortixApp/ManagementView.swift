@@ -2,11 +2,14 @@ import AppKit
 import FortixCore
 import ServiceManagement
 import SwiftUI
+import UniformTypeIdentifiers
 
-/// EditorSelection gives a stable identity to a new or existing profile editor sheet.
+/// EditorSelection gives a stable identity to a new, existing, or imported profile editor sheet.
 private struct EditorSelection: Identifiable {
-  /// Profile is absent only for a new configuration.
+  /// Profile is absent for a new configuration and for an imported file profile.
   let profile: VPNProfile?
+  /// Shared is the imported file profile under review, or nil for ordinary editing.
+  var shared: SharedImport?
   /// ID prevents changing draft identity when authoritative profile state refreshes.
   let id = UUID()
 }
@@ -19,6 +22,10 @@ struct ManagementView: View {
   @State private var editor: EditorSelection?
   /// ShowImport reveals read-only drafts before any helper write.
   @State private var showImport = false
+  /// PendingImports queues the remaining file profiles, each reviewed in its own editor sheet.
+  @State private var pendingImports: [SharedImport] = []
+  /// Selection identifies the profile that Export writes; no selection exports every profile.
+  @State private var selection: String?
   /// Deleting retains the exact configuration selected for an explicit delete confirmation.
   @State private var deleting: VPNProfile?
   /// Tab remembers the currently visible management area.
@@ -49,11 +56,18 @@ struct ManagementView: View {
     .onAppear { if !model.reachable { tab = "settings" } }
     .onReceive(model.$prompts) { prompts in
       if !prompts.isEmpty {
+        pendingImports.removeAll()
         editor = nil
         showImport = false
       }
     }
-    .sheet(item: $editor) { selection in ProfileEditor(model: model, profile: selection.profile) }
+    .sheet(item: $editor, onDismiss: showNextImport) { selection in
+      if let shared = selection.shared {
+        ProfileEditor(model: model, shared: shared) { pendingImports.removeAll() }
+      } else {
+        ProfileEditor(model: model, profile: selection.profile)
+      }
+    }
     .sheet(isPresented: $showImport) { ImportPreview(model: model) }
     .sheet(
       item: Binding(
@@ -82,22 +96,35 @@ struct ManagementView: View {
   private var profiles: some View {
     VStack(alignment: .leading, spacing: AppTheme.spacing) {
       HStack {
-        Button("New profile") { editor = EditorSelection(profile: nil) }
-        Button("Import FortiClient...") {
-          model.perform {
-            model.importDrafts = try await installation.preview()
-            showImport = true
+        Group {
+          Button("New profile") { editor = EditorSelection(profile: nil) }
+          Button("Import profile...") { importShared() }
+          Button("Import FortiClient...") {
+            model.perform {
+              model.importDrafts = try await installation.preview()
+              showImport = true
+            }
           }
-        }
+        }.disabled(!model.reachable || model.busy)
+        Button("Export...") { exportShared() }
+          .disabled(model.profiles.isEmpty || model.busy)
+          .help(
+            selection == nil
+              ? "Export all profiles without usernames or passwords"
+              : "Export the selected profile without its username or password")
         Spacer()
-        Button("Connect all") { model.perform { try await model.connectAll() } }
-        Button("Disconnect all") { model.perform { try await model.disconnect() } }
-      }.disabled(!model.reachable || model.busy)
-      if model.profiles.isEmpty {
-        Text("No profiles. Create a profile or preview a FortiClient import.").foregroundStyle(
-          .secondary)
+        Group {
+          Button("Connect all") { model.perform { try await model.connectAll() } }
+          Button("Disconnect all") { model.perform { try await model.disconnect() } }
+        }.disabled(!model.reachable || model.busy)
       }
-      List(model.profiles) { profile in
+      if model.profiles.isEmpty {
+        Text(
+          "No profiles. Create a profile, import a profile file, or preview a FortiClient import."
+        )
+        .foregroundStyle(.secondary)
+      }
+      List(model.profiles, selection: $selection) { profile in
         let state = model.states[profile.id]
         VStack(alignment: .leading, spacing: AppTheme.spacing) {
           HStack {
@@ -127,6 +154,68 @@ struct ManagementView: View {
         }.padding(.vertical)
       }
     }.padding()
+  }
+
+  /// ExportShared writes the selected profile, or all profiles, as a secret-free share file.
+  /// The document is built and validated before the save panel opens, so no partial file is written.
+  private func exportShared() {
+    let selected = model.profiles.filter { $0.id == selection }
+    let chosen = selected.isEmpty ? model.profiles : selected
+    let data: Data
+    do { data = try SharedProfiles.export(chosen) } catch {
+      model.message = AppModel.failureText(error)
+      return
+    }
+    let panel = NSSavePanel()
+    panel.title = chosen.count == 1 ? "Export profile" : "Export \(chosen.count) profiles"
+    panel.message = "Usernames and passwords are never included."
+    panel.nameFieldStringValue =
+      chosen.count == 1 ? "\(chosen[0].id).fortix.json" : "profiles.fortix.json"
+    panel.allowedContentTypes = [.json]
+    panel.canCreateDirectories = true
+    panel.begin { response in
+      guard response == .OK, let url = panel.url else { return }
+      do {
+        try data.write(to: url, options: .atomic)
+        model.message =
+          chosen.count == 1
+          ? "Exported \(chosen[0].name). Usernames and passwords are not included."
+          : "Exported \(chosen.count) profiles. Usernames and passwords are not included."
+      } catch {
+        model.message = "The profile file could not be written. Choose another location."
+      }
+    }
+  }
+
+  /// ImportShared parses a chosen share file, then reviews each profile in the profile editor.
+  /// Nothing is saved until the user completes and saves each editor sheet.
+  private func importShared() {
+    let panel = NSOpenPanel()
+    panel.title = "Import profile"
+    panel.allowedContentTypes = [.json]
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = false
+    panel.begin { response in
+      guard response == .OK, let url = panel.url else { return }
+      do {
+        let drafts = try SharedProfiles.read(contentsOf: url)
+        model.message = nil
+        pendingImports = drafts.enumerated().map {
+          SharedImport(draft: $0.element, position: $0.offset + 1, count: drafts.count)
+        }
+        showNextImport()
+      } catch {
+        model.message = AppModel.failureText(error)
+      }
+    }
+  }
+
+  /// ShowNextImport opens the next queued file profile once no editor sheet is visible.
+  private func showNextImport() {
+    guard editor == nil, !pendingImports.isEmpty, model.prompts.isEmpty else { return }
+    let next = pendingImports.removeFirst()
+    // Defer one turn so the dismissed sheet finishes closing before the next one opens.
+    DispatchQueue.main.async { editor = EditorSelection(profile: nil, shared: next) }
   }
 }
 

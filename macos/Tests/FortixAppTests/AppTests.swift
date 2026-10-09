@@ -44,8 +44,10 @@ final class AppTests: XCTestCase {
     draft.port = "443"
     draft.profile.routes.mode = "custom"
     draft.profile.dns.mode = "split"
-    draft.routesText = "10.0.0.0/8, 192.0.2.0/24\n"
-    draft.domainsText = "corp.example, internal.example"
+    draft.routeRows = [.init(text: "10.0.0.0/8"), .init(text: " 192.0.2.0/24\n"), .init(text: "")]
+    draft.domainRows = [
+      .init(text: "corp.example"), .init(text: " "), .init(text: "internal.example"),
+    ]
     let changed = try draft.value()
     XCTAssertNil(changed.backend)
     XCTAssertEqual(changed.routes.include, ["10.0.0.0/8", "192.0.2.0/24"])
@@ -53,6 +55,70 @@ final class AppTests: XCTestCase {
     draft.profile.backend = "native"
     draft.profile.mfa.mode = "prompt"
     XCTAssertThrowsError(try draft.value())
+  }
+
+  /// TestDraftListRows trims, drops empty rows, normalizes wildcards, and reports problems per row.
+  func testDraftListRows() throws {
+    var draft = ProfileDraft(profile: Fixture.profile)
+    XCTAssertEqual(draft.routeRows.map(\.text), [""])
+    draft.profile.routes.mode = "custom"
+    draft.profile.dns.mode = "split"
+    XCTAssertTrue(draft.routesEmpty)
+    XCTAssertTrue(draft.domainCountInvalid)
+    XCTAssertThrowsError(try draft.value())
+    let bad = EntryRow(text: "192.0.2.1/24")
+    let duplicate = EntryRow(text: "example2.com")
+    draft.routeRows = [.init(text: "192.0.2.0/25"), bad]
+    draft.domainRows = [.init(text: " *.Example2.com "), .init(text: ""), duplicate]
+    XCTAssertEqual(draft.routeProblems, [bad.id: "Must be a canonical masked prefix"])
+    XCTAssertEqual(draft.domainProblems, [duplicate.id: "Duplicate domain"])
+    XCTAssertThrowsError(try draft.value())
+    draft.routeRows.removeAll { $0.id == bad.id }
+    draft.domainRows.removeAll { $0.id == duplicate.id }
+    let result = try draft.value()
+    XCTAssertEqual(result.routes.include, ["192.0.2.0/25"])
+    XCTAssertEqual(result.dns.domains, ["example2.com"])
+    draft.profile.dns.mode = "none"
+    XCTAssertTrue(draft.domainProblems.isEmpty)
+  }
+
+  /// TestSharedDraftPrefill leaves absent fields empty, keeps pins out, and merges by overlay.
+  func testSharedDraftPrefill() throws {
+    let shared = try SharedProfiles.parse(
+      Data(
+        #"{"format":"fortix-profile","version":1,"profiles":[{"name":"Example","gateway":{"port":8443},"trusted_cert":"\#(String(repeating: "ab", count: 32))","routes":{"include":["192.0.2.0/24"]},"dns":{"mode":"split","domains":["*.example2.com"]}}]}"#
+          .utf8))[0]
+    XCTAssertEqual(shared.missing, ["id", "gateway.host", "username"])
+    let created = ProfileDraft(shared: shared)
+    XCTAssertEqual(created.profile.id, "")
+    XCTAssertEqual(created.profile.username, "")
+    XCTAssertEqual(created.profile.gateway.host, "")
+    XCTAssertEqual(created.port, "8443")
+    XCTAssertNil(created.profile.trustedCert)
+    XCTAssertEqual(created.profile.routes.mode, "custom")
+    XCTAssertEqual(created.routeRows.map(\.text), ["192.0.2.0/24"])
+    XCTAssertEqual(created.domainRows.map(\.text), ["example2.com"])
+    var existing = Fixture.profile
+    existing.trustedCert = String(repeating: "cd", count: 32)
+    existing.dns = .init(mode: "split", domains: ["corp.example", "internal.example"])
+    let merged = ProfileDraft(shared: shared, merging: existing)
+    XCTAssertEqual(merged.profile.id, existing.id)
+    XCTAssertEqual(merged.profile.username, existing.username)
+    XCTAssertEqual(merged.profile.gateway.host, existing.gateway.host)
+    XCTAssertEqual(merged.profile.name, "Example")
+    XCTAssertEqual(merged.profile.trustedCert, existing.trustedCert)
+    XCTAssertEqual(try merged.value().dns.domains, ["example2.com"])
+  }
+
+  /// TestSharedFailureText names forbidden keys and schema paths but never supplied values.
+  @MainActor func testSharedFailureText() {
+    XCTAssertThrowsError(
+      try SharedProfiles.parse(Data(#"{"profiles":[{"password":"do-not-echo"}]}"#.utf8))
+    ) { error in
+      let text = AppModel.failureText(error)
+      XCTAssertTrue(text.contains("(password)"), text)
+      XCTAssertFalse(text.contains("do-not-echo"), text)
+    }
   }
 
   /// TestDraftModeChanges omit incompatible hidden fields and use the helper's prompt MFA spelling.
