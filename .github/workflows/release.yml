@@ -7,12 +7,25 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GOMAXPROCS: "2"
+  GOFLAGS: -p=2
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  release:
-    runs-on: macos-latest
+  linux:
+    runs-on: ubuntu-latest
     timeout-minutes: 30
-    permissions:
-      contents: write
+    env:
+      # GoReleaser can require a newer Go than the module's build toolchain.
+      GOTOOLCHAIN: auto
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -22,15 +35,81 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
+      - name: Check source and supported builds
+        run: |
+          make check
+          make cross-build
       - name: Validate release configuration
         run: go run github.com/goreleaser/goreleaser/v2@v2.18.2 check
+      - name: Build CLI archives and Debian packages without publishing
+        run: go run github.com/goreleaser/goreleaser/v2@v2.18.2 release --clean --parallelism 1 --skip=publish,announce
+      - name: Verify Debian metadata
+        run: |
+          for package in dist/*.deb; do
+            test "$(dpkg-deb -f "$package" Depends)" = iproute2
+            test "$(dpkg-deb -f "$package" Recommends)" = 'openfortivpn, ppp'
+            test "$(dpkg-deb -f "$package" Maintainer)" = 'Mert Dede <doganmertdede@gmail.com>'
+          done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: cli-packages
+          if-no-files-found: error
+          path: |
+            dist/*.tar.gz
+            dist/*.deb
+
+  macos:
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test and build Swift package
+        run: |
+          go build -o "$RUNNER_TEMP/fortix-test" ./cmd/fortix
+          FORTIX_TEST_CLI="$RUNNER_TEMP/fortix-test" swift test --package-path macos --jobs 2
+          swift build --package-path macos --jobs 2
+      - name: Build and verify arm64 app and disk image
         env:
-          # GoReleaser itself requires a newer Go than the module; allow the download.
-          GOTOOLCHAIN: auto
-      - name: Check source
-        run: make check
-      - name: Publish release
-        run: go run github.com/goreleaser/goreleaser/v2@v2.18.2 release --clean --parallelism 1
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          scripts/build-macos-app.sh "$RELEASE_TAG" dist/Fortix.app
+          scripts/build-dmg.sh dist/Fortix.app "dist/fortix_${RELEASE_TAG#v}_darwin_arm64.dmg"
+          scripts/verify-macos-package.sh dist/Fortix.app "dist/fortix_${RELEASE_TAG#v}_darwin_arm64.dmg"
+          ditto -c -k --keepParent dist/Fortix.app "dist/fortix_${RELEASE_TAG#v}_darwin_arm64.app.zip"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: macos-app
+          if-no-files-found: error
+          path: |
+            dist/*.dmg
+            dist/*.app.zip
+
+  publish:
+    needs: [linux, macos]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: '*'
+          path: release-artifacts
+          merge-multiple: true
+      - name: Verify artifact set and generate combined checksums
+        run: scripts/release-checksums.sh release-artifacts
+      - name: Publish all assets in one release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GOTOOLCHAIN: auto
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "$RELEASE_TAG" release-artifacts/*

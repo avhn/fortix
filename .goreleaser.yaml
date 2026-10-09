@@ -26,27 +26,15 @@ builds:
     goarch: [amd64, arm64]
     ldflags:
       - -s -w -X github.com/avhn/fortix/internal/buildinfo.Version={{.Version}}
-  - id: tray-darwin
-    main: ./cmd/fortix-tray
-    binary: fortix-tray
-    env: [CGO_ENABLED=1]
-    goos: [darwin]
-    goarch: [amd64, arm64]
-    overrides:
-      - goos: darwin
-        goarch: amd64
-        env: [CGO_ENABLED=1, 'CC=clang -target x86_64-apple-macos11']
-      - goos: darwin
-        goarch: arm64
-        env: [CGO_ENABLED=1, 'CC=clang -target arm64-apple-macos11']
-    ldflags:
-      - -s -w -X github.com/avhn/fortix/internal/buildinfo.Version={{.Version}}
+  # The macOS desktop is distributed as a Swift app, separately from CLI archives.
 
 archives:
   - id: fortix
-    ids: [fortix, fortix-helper, tray-linux, tray-darwin]
+    ids: [fortix, fortix-helper, tray-linux]
+    # Linux includes its tray; macOS CLI archives contain only CLI and helper.
+    allow_different_binary_count: true
     formats: [tar.gz]
-    files: [LICENSE, README.md]
+    files: [LICENSE, README.md, THIRD_PARTY_NOTICES.txt]
     builds_info:
       owner: root
       group: root
@@ -61,12 +49,17 @@ nfpms:
     formats: [deb]
     vendor: fortix
     homepage: https://github.com/avhn/fortix
-    maintainer: fortix maintainers <maintainers@example.com>
+    maintainer: Mert Dede <doganmertdede@gmail.com>
     description: FortiGate SSL VPN profile manager with a CLI and desktop tray.
     license: GPL-3.0-or-later
     bindir: /usr/libexec/fortix
-    dependencies: [openfortivpn, ppp]
+    dependencies: [iproute2]
+    recommends: [openfortivpn, ppp]
     contents:
+      - src: LICENSE
+        dst: /usr/share/doc/fortix/copyright
+      - src: THIRD_PARTY_NOTICES.txt
+        dst: /usr/share/doc/fortix/THIRD_PARTY_NOTICES.txt
       - src: /usr/libexec/fortix/fortix
         dst: /usr/bin/fortix
         type: symlink

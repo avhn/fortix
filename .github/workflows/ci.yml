@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  GOMAXPROCS: "2"
+  GOFLAGS: -p=2
+
 jobs:
   check:
     strategy:
@@ -29,8 +33,28 @@ jobs:
         run: make lint
       - name: Test with race detector
         run: make test
+      - name: Test packaging and verify dependency notices
+        run: make packaging-test notices-check
       - name: Cross-build supported platforms
         run: make cross-build
       - name: Build native macOS tray
         if: runner.os == 'macOS'
         run: make native-tray
+
+  swift:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test Swift package with CLI fixtures
+        run: |
+          go build -o "$RUNNER_TEMP/fortix-test" ./cmd/fortix
+          FORTIX_TEST_CLI="$RUNNER_TEMP/fortix-test" swift test --package-path macos --jobs 2
+      - name: Build Swift app
+        run: swift build --package-path macos --jobs 2

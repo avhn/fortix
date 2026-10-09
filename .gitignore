@@ -1,6 +1,7 @@
 # Build output
 /dist/
 /bin/
+/macos/.build/
 *.test
 *.out
 coverage.*

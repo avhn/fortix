@@ -1,7 +1,15 @@
 GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
 GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.1.4
 
-.PHONY: build test fuzz lint vuln fmt-check check cross-build native-tray
+.PHONY: build test fuzz lint vuln fmt-check check cross-build native-tray packaging-test notices-check macos-app macos-dmg
+
+# Bound package compilation even when callers do not supply a resource budget.
+export GOMAXPROCS := 2
+export GOFLAGS := -p=2
+
+MACOS_VERSION ?= $(shell git describe --tags --match 'v*' --always --dirty)
+MACOS_APP ?= dist/Fortix.app
+MACOS_DMG ?= dist/fortix_$(patsubst v%,%,$(MACOS_VERSION))_darwin_arm64.dmg
 
 # Native macOS tray code requires cgo; every other target uses pure Go.
 CROSS_PACKAGES = $$(go list ./... | grep -vE '/cmd/fortix-tray$$')
@@ -13,7 +21,7 @@ test:
 	go test -race ./...
 
 fuzz:
-	go test ./internal/profile -run '^$$' -fuzz '^FuzzDecode$$' -fuzztime 20s
+	go test ./internal/profile -run '^$$' -fuzz '^FuzzDecode$$' -parallel 1 -fuzztime 20s
 
 lint:
 	go run $(GOLANGCI_LINT) run
@@ -47,3 +55,22 @@ check:
 	$(MAKE) fmt-check
 	$(MAKE) lint
 	$(MAKE) test
+	$(MAKE) packaging-test
+	$(MAKE) notices-check
+
+# Packaging tests use fixtures only and never execute privileged installer commands.
+packaging-test:
+	bash scripts/test-packaging.sh
+
+# Fail when linked dependency versions or their upstream license texts change.
+notices-check:
+	bash scripts/generate-notices.sh --check
+
+# Build outputs refuse replacement; choose a fresh path for repeated local builds.
+macos-app:
+	bash scripts/build-macos-app.sh "$(MACOS_VERSION)" "$(MACOS_APP)"
+
+# Package and verify an already built app without installing or launching it.
+macos-dmg:
+	bash scripts/build-dmg.sh "$(MACOS_APP)" "$(MACOS_DMG)"
+	bash scripts/verify-macos-package.sh "$(MACOS_APP)" "$(MACOS_DMG)"
