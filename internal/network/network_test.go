@@ -68,20 +68,34 @@ func (f *fakeRunner) Run(ctx context.Context, candidates []string, args ...strin
 		return []byte(output), nil
 	}
 	if args[0] == "route" || args[0] == "-n" {
-		var operation, cidr, link string
-		if args[0] == "route" {
-			operation, cidr, link = args[1], args[2], args[4]
+		operation, cidr := args[1], args[2]
+		link, gateway := "", ""
+		if args[0] == "-n" {
+			cidr = args[3]
+			if args[2] == "-host" {
+				cidr += "/32"
+			}
+			link = args[len(args)-1]
+			gateway = link
+			if args[4] != "-interface" {
+				gateway = args[4]
+			}
 		} else {
-			operation, cidr, link = args[1], args[3], args[5]
+			for i, arg := range args {
+				if arg == "dev" {
+					link = args[i+1]
+				}
+				if arg == "via" {
+					gateway = args[i+1]
+				}
+			}
 		}
 		if operation == "add" {
-			gateway := ""
-			if f.os == "darwin" {
-				gateway = link
-			}
 			f.routes = append(f.routes, JournalRoute{cidr, gateway, link})
 		} else {
-			f.routes = slices.DeleteFunc(f.routes, func(route JournalRoute) bool { return route.CIDR == cidr && route.Interface == link })
+			f.routes = slices.DeleteFunc(f.routes, func(route JournalRoute) bool {
+				return route.CIDR == cidr && route.Interface == link && route.Gateway == gateway
+			})
 		}
 		return nil, nil
 	}
@@ -120,7 +134,7 @@ func testManager(t *testing.T, platform string) (*Manager, *fakeRunner) {
 // testProfile returns a valid custom/split profile using documentation-only identities.
 // The two disjoint destinations allow rollback to be tested between individual commands.
 func testProfile(id string) *profile.Profile {
-	p := &profile.Profile{SchemaVersion: 1, ID: id, Name: "Work", Backend: "openfortivpn", Gateway: profile.Gateway{Host: "vpn.example.com", Port: 443}, Username: "jane.doe", Routes: profile.Routes{Mode: "custom", Include: []string{"10.20.0.0/16", "10.30.0.0/16"}}, DNS: profile.DNS{Mode: "split", Domains: []string{"corp.example.com"}}}
+	p := &profile.Profile{SchemaVersion: 1, ID: id, Name: "Work", Backend: "openfortivpn", Gateway: profile.Gateway{Host: "vpn.example.com", Port: 443}, Username: "jane.doe", Routes: profile.Routes{Mode: "custom", Include: []string{"10.20.0.0/16", "10.50.0.0/16"}}, DNS: profile.DNS{Mode: "split", Domains: []string{"corp.example.com"}}}
 	p.ApplyDefaults()
 	return p
 }
@@ -158,6 +172,9 @@ func TestApplyTeardown(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if len(records) == 0 || records[0].Backend != "openfortivpn" || records[0].Interface != "ppp0" {
+				t.Fatalf("process backend identity was not persisted: %+v", records)
+			}
 			if len(f.routes) != 2 || len(records) < 5 || len(j.Routes) != 2 {
 				t.Fatalf("missing network ownership: %+v", j)
 			}
@@ -192,7 +209,7 @@ func TestApplyTeardown(t *testing.T) {
 // TestRollback injects route, DNS and journal failures in the middle of application.
 // Successful rollback leaves no owned host resources; failed rollback retains the journal.
 func TestRollback(t *testing.T) {
-	for _, tc := range []struct{ platform, failure string }{{"darwin", "add -net 10.30"}, {"linux", "add 10.30"}, {"linux", "domain ppp0 ~"}, {"linux", "dns ppp0 10."}} {
+	for _, tc := range []struct{ platform, failure string }{{"darwin", "add -net 10.50"}, {"linux", "add 10.50"}, {"linux", "domain ppp0 ~"}, {"linux", "dns ppp0 10."}} {
 		t.Run(tc.platform+tc.failure, func(t *testing.T) {
 			m, f := testManager(t, tc.platform)
 			f.fail, f.failOnce = tc.failure, true

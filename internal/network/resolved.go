@@ -37,14 +37,41 @@ func parseResolved(data []byte, link string) ([]string, error) {
 	return strings.Fields(values), nil
 }
 
-// resolvedValues queries one DNS property on link and validates the returned identity.
-// A missing link or command failure is returned rather than assuming settings are absent.
-func (m *Manager) resolvedValues(ctx context.Context, property, link string) ([]string, error) {
-	data, err := m.resolved(ctx, property, link)
+// resolvedValues validates a link query against its native recorded index.
+// Process records retain name validation; native recovery cannot mistake reused link DNS.
+func (m *Manager) resolvedValues(ctx context.Context, property string, j Journal) ([]string, error) {
+	data, err := m.resolved(ctx, property, j.Interface)
 	if err != nil {
 		return nil, err
 	}
-	return parseResolved(data, link)
+	values, err := parseResolved(data, j.Interface)
+	if err != nil {
+		return nil, err
+	}
+	if j.backendName() == "native" {
+		fields := strings.Fields(strings.SplitN(string(data), ":", 2)[0])
+		index, err := strconv.Atoi(fields[1])
+		if err != nil || j.Link == nil || index != j.Link.Index {
+			return nil, &InterfaceError{}
+		}
+	}
+	return values, nil
+}
+
+// verifyDNSLink rechecks native kernel identity immediately before a DNS mutation.
+// A vanished or reused link is refused during apply and skipped by teardown's precheck.
+func (m *Manager) verifyDNSLink(j Journal) error {
+	if j.backendName() != "native" {
+		return nil
+	}
+	present, err := m.nativeLinkPresent(j)
+	if err != nil {
+		return err
+	}
+	if !present {
+		return &InterfaceError{}
+	}
+	return nil
 }
 
 // applyResolved refuses preexisting link settings, journals both intended properties,
@@ -52,12 +79,12 @@ func (m *Manager) resolvedValues(ctx context.Context, property, link string) ([]
 // reconciled by matching the recorded values against current per-link settings.
 func (m *Manager) applyResolved(ctx context.Context, p *profile.Profile, effect session.Effect, j *Journal, persist func(Journal) error) error {
 	for _, property := range []string{"dns", "domain"} {
-		values, err := m.resolvedValues(ctx, property, effect.Interface)
+		values, err := m.resolvedValues(ctx, property, *j)
 		if err != nil {
 			return err
 		}
 		if len(values) != 0 {
-			return &ConflictError{"PPP interface already has DNS settings"}
+			return &ConflictError{"tunnel interface already has DNS settings"}
 		}
 	}
 	for _, server := range effect.DNS {
@@ -71,8 +98,14 @@ func (m *Manager) applyResolved(ctx context.Context, p *profile.Profile, effect 
 		j.DNSConfigured, j.DNSServers, j.DNSDomains = false, nil, nil
 		return err
 	}
+	if err := m.verifyDNSLink(*j); err != nil {
+		return err
+	}
 	if _, err := m.resolved(ctx, append([]string{"dns", effect.Interface}, j.DNSServers...)...); err != nil {
 		return fmt.Errorf("configuring split DNS servers failed: %w", err)
+	}
+	if err := m.verifyDNSLink(*j); err != nil {
+		return err
 	}
 	if _, err := m.resolved(ctx, append([]string{"domain", effect.Interface}, j.DNSDomains...)...); err != nil {
 		return fmt.Errorf("configuring split DNS domains failed: %w", err)
@@ -91,20 +124,26 @@ func (m *Manager) removeResolved(ctx context.Context, j Journal) error {
 	if !present {
 		return nil
 	}
-	servers, err := m.resolvedValues(ctx, "dns", j.Interface)
+	servers, err := m.resolvedValues(ctx, "dns", j)
 	if err != nil {
 		return err
 	}
-	domains, err := m.resolvedValues(ctx, "domain", j.Interface)
+	domains, err := m.resolvedValues(ctx, "domain", j)
 	if err != nil {
 		return err
 	}
 	var failures []error
 	if slices.Equal(servers, j.DNSServers) {
+		if err := m.verifyDNSLink(j); err != nil {
+			return err
+		}
 		_, err := m.resolved(ctx, "dns", j.Interface, "")
 		failures = append(failures, err)
 	}
 	if slices.Equal(domains, j.DNSDomains) {
+		if err := m.verifyDNSLink(j); err != nil {
+			return err
+		}
 		_, err := m.resolved(ctx, "domain", j.Interface, "")
 		failures = append(failures, err)
 	}

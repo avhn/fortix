@@ -57,13 +57,19 @@ func linkSubnets(name string, flags net.Flags, addresses []net.Addr) []Interface
 	return result
 }
 
-// validInterface accepts only the PPP interface names emitted by the VPN parser.
-// It prevents whitespace, flags, paths and other devices from reaching privileged argv.
+// validInterface checks the exact allocated PPP and native tunnel name patterns.
+// Native names require separate platform and registered identity verification before use.
 func validInterface(name string) bool {
-	if !strings.HasPrefix(name, "ppp") || len(name) < 4 || len(name) > 16 {
+	return numberedInterface(name, "ppp") || numberedInterface(name, "utun") || numberedInterface(name, "fortix")
+}
+
+// numberedInterface accepts a bounded prefix followed by one or more decimal digits.
+// Whitespace, flags, paths and suffixes cannot reach privileged command arguments.
+func numberedInterface(name, prefix string) bool {
+	if !strings.HasPrefix(name, prefix) || len(name) <= len(prefix) || len(name) > 16 {
 		return false
 	}
-	for _, c := range name[3:] {
+	for _, c := range name[len(prefix):] {
 		if c < '0' || c > '9' {
 			return false
 		}

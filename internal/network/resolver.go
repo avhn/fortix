@@ -28,11 +28,46 @@ func validDomain(domain string) bool {
 	return p.Validate() == nil
 }
 
-// validateJournal rejects unsafe route, resolver and resolved ownership before teardown.
-// Recovery metadata cannot target arbitrary files, non-PPP devices or unmarked content.
+// validateJournal rejects unsafe backend, link, route, resolver and resolved ownership.
+// Legacy records remain process-backed and PPP-only. Native resources require a
+// registered index and local IP; physical routes are allowed only as typed host leases.
 func (m *Manager) validateJournal(j Journal) error {
 	if j.Profile == "" || strings.ContainsAny(j.Profile, "/\n\r") {
 		return errors.New("invalid network journal profile")
+	}
+	if j.backendName() == "native" {
+		if j.Attempt == 0 || j.PID != 0 || j.StartTime != "" {
+			return errors.New("invalid native journal identity")
+		}
+		// A crash before device creation leaves only a resource-free native intent.
+		if j.Link == nil && j.Interface == "" && len(j.Routes) == 0 && len(j.ResolverFiles) == 0 && !j.DNSConfigured && j.GatewayException == nil {
+			return nil
+		}
+		if j.Link == nil || j.Link.Index <= 0 || j.Link.PID != 0 || j.Link.StartTime != "" ||
+			j.Link.Interface != j.Interface || !m.nativeInterface(j.Interface) {
+			return errors.New("invalid native journal identity")
+		}
+		if j.LocalIP != "" {
+			local, err := netip.ParseAddr(j.LocalIP)
+			if err != nil || !tunnelAddress(local) {
+				return errors.New("invalid native journal address")
+			}
+		}
+		if (len(j.Routes) > 0 || j.DNSConfigured) && j.LocalIP == "" {
+			return errors.New("native resources require a negotiated local address")
+		}
+	} else if j.backendName() != "openfortivpn" || j.Link != nil || j.GatewayException != nil ||
+		(j.Interface != "" && !numberedInterface(j.Interface, "ppp")) {
+		return errors.New("invalid process journal identity")
+	}
+	if j.GatewayException != nil {
+		if err := validateGateway(*j.GatewayException); err != nil {
+			return err
+		}
+		ip, err := netip.ParseAddr(j.GatewayIP)
+		if err != nil || netip.PrefixFrom(ip, 32).String() != j.GatewayException.Route.CIDR {
+			return errors.New("gateway lease does not match the TLS peer")
+		}
 	}
 	for _, route := range j.Routes {
 		prefix, err := netip.ParsePrefix(route.CIDR)

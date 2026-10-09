@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/paths"
 	"github.com/avhn/fortix/internal/profile"
 	"github.com/avhn/fortix/internal/session"
@@ -31,6 +32,8 @@ func (e *ConflictError) Error() string { return e.Detail }
 // OS defaults to the runtime platform; discovery and Runner default to host implementations.
 // LinkExists includes down/addressless interfaces because resolved state dies on deletion,
 // not merely when a link loses its IPv4 address.
+// InterfaceIndex supplies read-only kernel identity lookup for native registration and
+// reuse-safe cleanup. Missing links return os.ErrNotExist; other errors fail closed.
 // Tests must inject Runner before applying resources, even when paths are relocated.
 type Options struct {
 	Paths           paths.Paths
@@ -39,14 +42,23 @@ type Options struct {
 	Subnets         func() ([]InterfaceSubnet, error)
 	LinkExists      func(string) (bool, error)
 	VerifyInterface func(string, netip.Addr) error
+	InterfaceIndex  func(string) (int, error)
 }
 
 // tunnel reserves configured prefixes and full mode while an attempt is in flight.
 // Addresses and observed pushed routes are added as negotiation makes them available.
+// The peer is retained only after native configuration succeeds, so caller-supplied
+// route effects cannot exempt unrelated destinations from conflict checks.
 type tunnel struct {
-	profile profile.Profile
-	localIP netip.Addr
-	link    string
+	profile    profile.Profile
+	localIP    netip.Addr
+	peerIP     netip.Addr
+	link       string
+	attempt    uint64
+	identity   backend.LinkIdentity
+	prefixes   []netip.Prefix
+	negotiated bool
+	configured bool
 }
 
 // Manager serializes ownership transactions and conflict reservations across profiles.
@@ -61,6 +73,8 @@ type Manager struct {
 	linkExists      func(string) (bool, error)
 	verifyInterface func(string, netip.Addr) error
 	active          map[string]tunnel
+	interfaceIndex  func(string) (int, error)
+	gateways        map[string]*gatewayLease
 }
 
 // New initializes an inert adapter without running commands or accessing host paths.
@@ -87,7 +101,10 @@ func New(o Options) (*Manager, error) {
 	if o.LinkExists == nil {
 		o.LinkExists = InterfaceExists
 	}
-	return &Manager{os: o.OS, paths: o.Paths, runner: o.Runner, subnets: o.Subnets, linkExists: o.LinkExists, verifyInterface: o.VerifyInterface, active: make(map[string]tunnel), transaction: make(chan struct{}, 1)}, nil
+	if o.InterfaceIndex == nil {
+		o.InterfaceIndex = interfaceIndex
+	}
+	return &Manager{os: o.OS, paths: o.Paths, runner: o.Runner, subnets: o.Subnets, linkExists: o.LinkExists, verifyInterface: o.VerifyInterface, interfaceIndex: o.InterfaceIndex, active: make(map[string]tunnel), gateways: make(map[string]*gatewayLease), transaction: make(chan struct{}, 1)}, nil
 }
 
 // CheckUp reserves p's custom prefixes or full mode after inspecting active profiles,
@@ -137,8 +154,8 @@ func (m *Manager) CheckUp(ctx context.Context, p *profile.Profile) error {
 		}
 		for _, candidate := range p.Routes.Include {
 			prefix := netip.MustParsePrefix(candidate)
-			for _, configured := range other.profile.Routes.Include {
-				if prefix.Overlaps(netip.MustParsePrefix(configured)) {
+			for _, configured := range reservationPrefixes(other) {
+				if nativeOverlap(prefix, configured) {
 					return &ConflictError{fmt.Sprintf("route %s overlaps active profile %s", candidate, other.profile.ID)}
 				}
 			}
@@ -216,6 +233,9 @@ func (m *Manager) addresses(id string, address netip.Addr) error {
 	if !ok || !address.Is4() || address.IsUnspecified() {
 		return errors.New("invalid tunnel address reservation")
 	}
+	if current.configured && current.localIP != address {
+		return errors.New("native local address changed within an attempt")
+	}
 	for otherID, other := range m.active {
 		if otherID != id && other.localIP == address {
 			return &ConflictError{fmt.Sprintf("local IP %s is already used by active profile %s", address, otherID)}
@@ -226,9 +246,10 @@ func (m *Manager) addresses(id string, address netip.Addr) error {
 	return nil
 }
 
-// Apply installs custom routes and split DNS on effect.Interface, journalling intent
-// before each mutation and concrete ownership immediately afterwards. Failures roll back
-// with an independent bounded context; failed rollback keeps metadata for later teardown.
+// Apply installs reserved routes and profile-only split DNS on a verified tunnel link.
+// Native attempts require prior RegisterLink and ConfigureNative calls; process attempts
+// retain PPP verification. Intent precedes mutation and concrete ownership follows it.
+// Failures roll back with an independent bounded context; failed rollback retains metadata.
 func (m *Manager) Apply(ctx context.Context, p *profile.Profile, effect session.Effect, j *Journal, persist func(Journal) error) error {
 	if err := m.beginTransaction(ctx); err != nil {
 		return err
@@ -240,7 +261,14 @@ func (m *Manager) Apply(ctx context.Context, p *profile.Profile, effect session.
 	if err := p.Validate(); err != nil {
 		return errors.New("invalid network profile")
 	}
-	if err := m.verifyInterface(effect.Interface, effect.LocalIP); err != nil {
+	if err := m.validateJournal(*j); err != nil {
+		return err
+	}
+	if p.Backend == "native" {
+		if err := m.registeredLink(effect, *j, true); err != nil {
+			return err
+		}
+	} else if j.backendName() != "openfortivpn" || !numberedInterface(effect.Interface, "ppp") || m.verifyInterface(effect.Interface, effect.LocalIP) != nil {
 		return &InterfaceError{}
 	}
 	m.mu.Lock()
@@ -249,10 +277,13 @@ func (m *Manager) Apply(ctx context.Context, p *profile.Profile, effect session.
 		return err
 	}
 	current := m.active[p.ID]
-	current.link = effect.Interface
+	current.link, current.attempt = effect.Interface, effect.Attempt
 	m.active[p.ID] = current
 	m.mu.Unlock()
-	j.Interface = effect.Interface
+	j.Interface, j.Backend = effect.Interface, p.Backend
+	if err := persist(*j); err != nil {
+		return err
+	}
 	err := m.apply(ctx, p, effect, j, persist)
 	if err == nil {
 		return nil
@@ -263,7 +294,7 @@ func (m *Manager) Apply(ctx context.Context, p *profile.Profile, effect session.
 	rollbackErr := m.teardown(rollbackCtx, *j)
 	if rollbackErr == nil {
 		j.Routes, j.ResolverFiles, j.DNSConfigured = nil, nil, false
-		j.DNSServers, j.DNSDomains = nil, nil
+		j.DNSServers, j.DNSDomains, j.GatewayException = nil, nil, nil
 		rollbackErr = persist(*j)
 	}
 	return errors.Join(err, rollbackErr)
@@ -272,6 +303,34 @@ func (m *Manager) Apply(ctx context.Context, p *profile.Profile, effect session.
 // apply checks pushed/default routes before any mutation and executes one transaction
 // while the command gate is held, never the state mutex. Failures return to rollback.
 func (m *Manager) apply(ctx context.Context, p *profile.Profile, effect session.Effect, j *Journal, persist func(Journal) error) error {
+	if p.Backend == "native" {
+		if err := m.applyNative(ctx, p, effect, j, persist); err != nil {
+			return err
+		}
+	} else if err := m.applyProcessRoutes(ctx, p, effect, j, persist); err != nil {
+		return err
+	}
+	if p.DNS.Mode == "split" && !j.DNSConfigured && len(j.ResolverFiles) == 0 {
+		if len(effect.DNS) == 0 {
+			return errors.New("split DNS requires negotiated nameservers")
+		}
+		for _, server := range effect.DNS {
+			if !server.IsValid() || server.IsUnspecified() || server.Zone() != "" {
+				return errors.New("invalid negotiated nameserver")
+			}
+		}
+		effect.DNS = internalNameservers(effect.DNS)
+		if m.os == "darwin" {
+			return m.applyResolvers(ctx, p, effect, j, persist)
+		}
+		return m.applyResolved(ctx, p, effect, j, persist)
+	}
+	return ctx.Err()
+}
+
+// applyProcessRoutes preserves observed PPP routing checks and installs custom routes.
+// Every add shares the typed rejection handling used for helper-owned native routes.
+func (m *Manager) applyProcessRoutes(ctx context.Context, p *profile.Profile, effect session.Effect, j *Journal, persist func(Journal) error) error {
 	routes, err := m.routes(ctx)
 	if err != nil {
 		return err
@@ -306,56 +365,9 @@ func (m *Manager) apply(ctx context.Context, p *profile.Profile, effect session.
 				return &ConflictError{"custom route destination already exists"}
 			}
 		}
-		j.Routes = append(j.Routes, route)
-		if err := persist(*j); err != nil {
-			j.Routes = j.Routes[:len(j.Routes)-1]
-			return err
-		}
-		if err := m.changeRoute(ctx, route, true); err != nil {
-			// A definite command rejection cannot grant ownership of a racing route.
-			// Cancellation is ambiguous, so its write-ahead intent remains recoverable.
-			if ctx.Err() == nil {
-				j.Routes = j.Routes[:len(j.Routes)-1]
-				if persistErr := persist(*j); persistErr != nil {
-					return errors.Join(err, persistErr)
-				}
-			}
+		if err := m.addOwnedRoute(ctx, route, j, persist); err != nil {
 			return fmt.Errorf("adding custom route %s failed: %w", cidr, err)
 		}
-		// Capture Darwin's concrete link gateway instead of retaining a wildcard intent.
-		updated, err := m.routes(ctx)
-		if err != nil {
-			return err
-		}
-		found := false
-		for _, actual := range updated {
-			if sameRoute(route, actual) {
-				j.Routes[len(j.Routes)-1] = actual
-				found = true
-				break
-			}
-		}
-		if !found {
-			return errors.New("added custom route could not be verified")
-		}
-		if err := persist(*j); err != nil {
-			return err
-		}
-	}
-	if p.DNS.Mode == "split" {
-		if len(effect.DNS) == 0 {
-			return errors.New("split DNS requires negotiated nameservers")
-		}
-		for _, server := range effect.DNS {
-			if !server.IsValid() || server.IsUnspecified() || server.Zone() != "" {
-				return errors.New("invalid negotiated nameserver")
-			}
-		}
-		effect.DNS = internalNameservers(effect.DNS)
-		if m.os == "darwin" {
-			return m.applyResolvers(ctx, p, effect, j, persist)
-		}
-		return m.applyResolved(ctx, p, effect, j, persist)
 	}
 	return ctx.Err()
 }
@@ -391,8 +403,8 @@ func (m *Manager) checkPushedRoutes(id, link string, routes []JournalRoute) erro
 			if full && prefix.Bits() <= 1 {
 				return &ConflictError{"gateway pushed a default route while another full tunnel is active"}
 			}
-			for _, candidate := range other.profile.Routes.Include {
-				if prefix.Bits() > 1 && prefix.Overlaps(netip.MustParsePrefix(candidate)) {
+			for _, candidate := range reservationPrefixes(other) {
+				if prefix.Bits() > 1 && nativeOverlap(prefix, candidate) {
 					return &ConflictError{"gateway pushed a route overlapping another active profile"}
 				}
 			}
@@ -414,6 +426,12 @@ func (m *Manager) Teardown(ctx context.Context, j Journal) error {
 		return err
 	}
 	defer func() { <-m.transaction }()
+	m.mu.Lock()
+	current := m.active[j.Profile]
+	m.mu.Unlock()
+	if current.attempt != 0 && current.attempt != j.Attempt {
+		return errors.New("network teardown generation mismatch")
+	}
 	if err := m.teardown(ctx, j); err != nil {
 		return err
 	}
@@ -436,14 +454,22 @@ func (m *Manager) teardown(ctx context.Context, j Journal) error {
 	if err := m.validateJournal(j); err != nil {
 		return err
 	}
+	linkOwned := true
+	if j.backendName() == "native" {
+		var err error
+		linkOwned, err = m.nativeLinkPresent(j)
+		if err != nil {
+			return err
+		}
+	}
 	var failures []error
-	if m.os == "linux" && j.DNSConfigured {
+	if linkOwned && m.os == "linux" && j.DNSConfigured {
 		failures = append(failures, m.removeResolved(ctx, j))
 	}
 	for i := len(j.ResolverFiles) - 1; i >= 0; i-- {
 		failures = append(failures, m.removeResolver(j.Profile, j.ResolverFiles[i]))
 	}
-	if len(j.Routes) > 0 {
+	if linkOwned && len(j.Routes) > 0 {
 		routes, err := m.routes(ctx)
 		if err != nil {
 			failures = append(failures, err)
@@ -451,6 +477,13 @@ func (m *Manager) teardown(ctx context.Context, j Journal) error {
 			for i := len(j.Routes) - 1; i >= 0; i-- {
 				for _, actual := range routes {
 					if sameRoute(j.Routes[i], actual) {
+						if j.backendName() == "native" {
+							owned, err := m.nativeLinkPresent(j)
+							if err != nil || !owned {
+								failures = append(failures, err)
+								break
+							}
+						}
 						failures = append(failures, m.changeRoute(ctx, actual, false))
 						break
 					}
@@ -459,7 +492,10 @@ func (m *Manager) teardown(ctx context.Context, j Journal) error {
 		}
 	}
 	failures = append(failures, ctx.Err())
-	return errors.Join(failures...)
+	if err := errors.Join(failures...); err != nil {
+		return err
+	}
+	return m.releaseGateway(ctx, j)
 }
 
 // InterfaceError refuses network changes when the kernel cannot prove the tunnel link.
