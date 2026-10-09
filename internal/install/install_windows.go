@@ -24,6 +24,7 @@ import (
 type Options struct {
 	Helper, CLI, User string
 	Purge             bool
+	Original          string // Internal staged-uninstall source, validated against known folders.
 }
 
 // installManifest records resource ownership and verified content without user credentials.
@@ -93,7 +94,7 @@ func Install(ctx context.Context, o Options) (result error) {
 		return err
 	}
 	if equalPath(o.Helper, filepath.Join(p.BinaryDir, "fortix-helper.exe")) {
-		return errors.New("run install using fortix-helper.exe from the extracted release directory, not the installed running image")
+		return errors.New("run the new release's fortix-helper.exe from its extracted directory to update, not the installed running image")
 	}
 	if !equalPath(o.CLI, filepath.Join(filepath.Dir(o.Helper), "fortix.exe")) {
 		return errors.New("CLI must be next to the running helper")
@@ -399,7 +400,7 @@ func removePrivateTree(path string, policy winfs.Policy) error {
 }
 
 // Uninstall stops and removes only a verified installed helper; profiles and group survive without purge.
-// The executable issuing this command should be outside ProgramFiles so Windows can remove its image.
+// RunUninstall stages installed-image calls before entering this serialized removal transaction.
 func Uninstall(ctx context.Context, o Options) (result error) {
 	if err := requireElevation(); err != nil {
 		return err
@@ -414,6 +415,12 @@ func Uninstall(ctx context.Context, o Options) (result error) {
 		return err
 	}
 	defer func() { result = errors.Join(result, unlock()) }()
+	// Removal rewrites SYSTEM-owned progress records just like installation.
+	restore, err := enableRestore()
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, restore()) }()
 	p, dataPath, err := machinePaths()
 	if err != nil {
 		return err
@@ -467,7 +474,42 @@ func Uninstall(ctx context.Context, o Options) (result error) {
 	if err := winfs.CheckSecurity(dataRoot.Handle(), private, true); err != nil {
 		return err
 	}
-	return uninstallResources(ctx, o, p, dataPath, root, dataRoot, service, policy, private, nativeInstallOps())
+	ops := nativeInstallOps()
+	if o.Original != "" {
+		stage, err := openUninstallStage(o, dataPath, filepath.Join(p.BinaryDir, "fortix-helper.exe"))
+		if err != nil {
+			return err
+		}
+		if root == nil || !root.SameVolume(stage) {
+			_ = stage.Close()
+			return errors.New("uninstall staging must be on the installation volume")
+		}
+		defer func() {
+			directory := filepath.Dir(o.Helper)
+			result = errors.Join(result, stage.Close(), scheduleDeletion(o.Helper), scheduleDeletion(filepath.Join(directory, "original.exe")), scheduleDeletion(directory))
+			if o.Purge {
+				result = errors.Join(result, scheduleDeletion(filepath.Join(dataPath, "staging")), scheduleDeletion(dataPath))
+			}
+		}()
+		ops = stagedRemoval(ops, stage, (*winfs.Root).MoveTo)
+	}
+	if o.Purge {
+		// Earlier staged removals can still have queued images until reboot.
+		// Verify the private staging root before excluding it from immediate purge.
+		staging, err := winfs.OpenRoot(filepath.Join(dataPath, "staging"))
+		if err != nil && !winfs.IsNotExist(err) {
+			return err
+		}
+		if staging != nil {
+			if err := winfs.CheckSecurity(staging.Handle(), private, true); err != nil {
+				_ = staging.Close()
+				return err
+			}
+			defer func() { result = errors.Join(result, staging.Close()) }()
+			ops = stagedPurge(ops, dataPath, scheduleDeletion)
+		}
+	}
+	return uninstallResources(ctx, o, p, dataPath, root, dataRoot, service, policy, private, ops)
 }
 
 // uninstallResources preserves ownership across removal and supports retry after interrupted cleanup.

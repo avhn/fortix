@@ -41,6 +41,7 @@ func installationOptions(args []string, executable string, diagnostics io.Writer
 		flags.StringVar(&opts.User, "user", "", "existing user account to grant helper access")
 	} else {
 		flags.BoolVar(&opts.Purge, "purge", false, "also remove stored profiles and the fortix group")
+		flags.StringVar(&opts.Original, "uninstall-original", "", "internal protected uninstall handoff")
 	}
 	if err := flags.Parse(args[1:]); err != nil {
 		return install.Options{}, err
@@ -51,6 +52,9 @@ func installationOptions(args []string, executable string, diagnostics io.Writer
 	flags.Visit(func(f *flag.Flag) {
 		if f.Name == "user" && opts.User == "" {
 			err = errors.New("--user requires an account name")
+		}
+		if f.Name == "uninstall-original" {
+			_, err = canonicalExecutable(opts.Original)
 		}
 	})
 	return opts, err

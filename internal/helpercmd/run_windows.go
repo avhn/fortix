@@ -20,7 +20,7 @@ import (
 )
 
 // Run permits service execution only through SCM; interactive calls never start a privileged listener.
-func Run(ctx context.Context, argv []string, _ io.Reader, out, diagnostics io.Writer) error {
+func Run(ctx context.Context, argv []string, in io.Reader, out, diagnostics io.Writer) error {
 	if len(argv) == 0 {
 		return errors.New("missing executable name")
 	}
@@ -62,7 +62,7 @@ func Run(ctx context.Context, argv []string, _ io.Reader, out, diagnostics io.Wr
 		if args[0] == "install" {
 			return install.Install(ctx, opts)
 		}
-		return install.Uninstall(ctx, opts)
+		return install.RunUninstall(ctx, opts, args, in, out, diagnostics)
 	case "status":
 		if len(args) != 1 {
 			return errors.New("status accepts no arguments")

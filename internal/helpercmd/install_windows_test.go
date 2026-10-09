@@ -36,3 +36,23 @@ func TestWindowsInteractiveUsageAndRefusals(t *testing.T) {
 		}
 	}
 }
+
+// TestStagedUninstallOptions limits the handoff flag to canonical uninstall paths.
+func TestStagedUninstallOptions(t *testing.T) {
+	original := `C:\Program Files\Fortix\fortix-helper.exe`
+	copy := `C:\ProgramData\Fortix\staging\fixture\fortix-helper.exe`
+	opts, err := installationOptions([]string{"uninstall", "--purge", "--uninstall-original", original}, copy, io.Discard)
+	if err != nil || opts.Original != original || !opts.Purge {
+		t.Fatalf("staged options: %+v %v", opts, err)
+	}
+	for _, args := range [][]string{
+		{"install", "--uninstall-original", original},
+		{"uninstall", "--uninstall-original="},
+		{"uninstall", "--uninstall-original", `C:\unsafe\..\fortix-helper.exe`},
+		{"uninstall", "--uninstall-original", `\\server\share\fortix-helper.exe`},
+	} {
+		if _, err := installationOptions(args, copy, io.Discard); err == nil {
+			t.Fatalf("unsafe handoff accepted: %v", args)
+		}
+	}
+}

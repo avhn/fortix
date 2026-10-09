@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -415,7 +416,11 @@ func (m *Manager) validateJournal(j Journal) error {
 			return errors.New("invalid interface journal")
 		}
 	}
-	if j.GatewayIP != "" && !validIPv4(j.GatewayIP) {
+	// Loopback TLS peers need no physical host lease for split routes.
+	// Address and gateway-exception validation still forbid loopback tunnel resources.
+	peer, peerErr := netip.ParseAddr(j.GatewayIP)
+	loopbackPeer := peerErr == nil && peer.Is4() && peer.IsLoopback() && peer.String() == j.GatewayIP
+	if j.GatewayIP != "" && !validIPv4(j.GatewayIP) && !loopbackPeer {
 		return errors.New("invalid TLS peer journal")
 	}
 	if j.GatewayException != nil {

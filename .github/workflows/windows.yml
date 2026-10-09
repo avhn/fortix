@@ -1,0 +1,176 @@
+name: Windows
+
+on:
+  push:
+    branches: [feature/v0.3, dev, main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GOMAXPROCS: "2"
+  GOFLAGS: -p=2
+
+jobs:
+  go:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Vet amd64 and test with race detector
+        shell: pwsh
+        run: |
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -race -p 1 ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go build -o "$env:RUNNER_TEMP/fortix.exe" ./cmd/fortix
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go build -o "$env:RUNNER_TEMP/fortix-helper.exe" ./cmd/fortix-helper
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Vet and cross-build arm64 without executing binaries
+        shell: pwsh
+        env:
+          GOARCH: arm64
+          CGO_ENABLED: "0"
+        run: |
+          go vet ./...
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go build ./cmd/fortix ./cmd/fortix-helper
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  dotnet:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: windows/global.json
+      - name: Test Windows core and optional app projects
+        shell: pwsh
+        run: |
+          dotnet test windows/Fortix.Core.Tests -m:1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Test-Path windows/Fortix.App.Tests/Fortix.App.Tests.csproj) {
+            dotnet test windows/Fortix.App.Tests -m:1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (Test-Path windows/Fortix.App/Fortix.App.csproj) {
+            dotnet publish windows/Fortix.App -c Release -r win-x64 -m:1
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Check interop vector drift
+        working-directory: windows/vectors
+        shell: pwsh
+        run: |
+          go run . -check
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  e2e:
+    needs: go
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Build isolated payload and verify pinned Wintun download
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $stage = Join-Path $env:RUNNER_TEMP ('fortix-payload-' + [guid]::NewGuid())
+          $download = Join-Path $env:RUNNER_TEMP ('wintun-download-' + [guid]::NewGuid())
+          $extract = Join-Path $env:RUNNER_TEMP ('wintun-extract-' + [guid]::NewGuid())
+          New-Item -ItemType Directory $stage, $download, $extract | Out-Null
+          "FORTIX_STAGE=$stage" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          go build -o "$stage/fortix.exe" ./cmd/fortix
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go build -o "$stage/fortix-helper.exe" ./cmd/fortix-helper
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = Get-Content internal/tun/wintun_windows.go -Raw
+          $url = [regex]::Match($source, 'https://www\.wintun\.net/builds/wintun-[0-9.]+\.zip').Value
+          $zipHash = [regex]::Match($source, 'wintunZipSHA256\s*=\s*"([a-f0-9]{64})"').Groups[1].Value
+          $dllHash = [regex]::Match($source, 'wintunAMD64SHA256\s*=\s*"([a-f0-9]{64})"').Groups[1].Value
+          if (!$url -or !$zipHash -or !$dllHash) { throw 'Missing pinned Wintun release constants' }
+          $zip = Join-Path $download 'wintun.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -TimeoutSec 60
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $zipHash) { throw 'Wintun ZIP hash mismatch' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract
+          $dll = Join-Path $extract 'wintun/bin/amd64/wintun.dll'
+          if ((Get-FileHash $dll -Algorithm SHA256).Hash -ne $dllHash) { throw 'Wintun DLL hash mismatch' }
+          Copy-Item -LiteralPath $dll -Destination (Join-Path $stage 'wintun.dll')
+      - name: Install helper service for current runner account
+        shell: pwsh
+        run: |
+          & "$env:FORTIX_STAGE/fortix-helper.exe" install --user "$env:USERNAME"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Exercise installed service, network cleanup and crash recovery
+        shell: pwsh
+        env:
+          FORTIX_E2E: "1"
+        run: |
+          go test -p 1 -count=1 -timeout 8m -v ./internal/e2e
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve helper logs before purge
+        if: always() && env.FORTIX_STAGE != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $logs = Join-Path $env:ProgramData 'Fortix/logs'
+          if (Test-Path $logs) {
+            Copy-Item -LiteralPath $logs -Destination (Join-Path $env:FORTIX_STAGE 'helper-logs') -Recurse
+          }
+      - name: Uninstall from installed image and verify complete cleanup
+        if: always() && env.FORTIX_STAGE != ''
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installed = Join-Path $env:ProgramFiles 'Fortix/fortix-helper.exe'
+          if (Test-Path $installed) {
+            & $installed uninstall --purge
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            & "$env:FORTIX_STAGE/fortix-helper.exe" uninstall --purge
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $deadline = [DateTime]::UtcNow.AddSeconds(30)
+          do {
+            $service = Get-Service -Name fortix-helper -ErrorAction SilentlyContinue
+            if (!$service) { break }
+            Start-Sleep -Milliseconds 250
+          } while ([DateTime]::UtcNow -lt $deadline)
+          if ($service) { throw 'Fortix service remains after uninstall' }
+          if (Test-Path (Join-Path $env:ProgramFiles 'Fortix')) { throw 'Fortix installation remains after uninstall' }
+          if (Get-LocalGroup -Name fortix -ErrorAction SilentlyContinue) { throw 'Fortix group remains after purge' }
+          if (Get-NetAdapter -IncludeHidden | Where-Object { $_.Name -like 'Fortix*' }) {
+            throw 'Fortix Wintun adapter remains after uninstall'
+          }
+      - name: Preserve helper logs if uninstall fails
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: windows-helper-logs
+          path: |
+            ${{ env.FORTIX_STAGE }}/helper-logs
+            C:/ProgramData/Fortix/logs
+          if-no-files-found: warn
+          retention-days: 7
