@@ -26,9 +26,13 @@ import (
 // Keep exceptions explicit so each later phase has to declare its additional scope.
 var ALLOWED_NEW = map[string]bool{"internal/network/routing_shared.go": true}
 var MOVE_DONORS = map[string]bool{"internal/network/native.go": true, "internal/network/manager.go": true}
-var ALLOWED_CHANGED = map[string]bool{}
+
+// The app icon moved to the graphite artwork in both appearances; these are its only
+// intended macOS packaging changes.
+var ALLOWED_CHANGED = map[string]bool{"packaging/macos/AppIcon.icns": true, "packaging/macos/Assets.car": true}
 var ALLOWED_PATHS = []string{
-	"docs/windows.md", "docs/release.md", "scripts/check-unix-unchanged.sh",
+	"docs/windows.md", "docs/release.md", "assets/icon/art.py", "docs/assets/readme-header.png",
+	"packaging/macos/AppIcon.icns", "packaging/macos/Assets.car", "scripts/check-unix-unchanged.sh",
 	"scripts/render-winget.sh", "scripts/verify-release-assets.sh", "scripts/release-checksums.sh",
 	"scripts/test-packaging.sh", ".github/workflows/windows.yml",
 	".github/workflows/unix-unchanged.yml", ".github/workflows/release.yml",

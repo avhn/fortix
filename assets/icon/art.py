@@ -17,7 +17,7 @@ composite of the layers equals the full icon up to that scale and mask.
 
 Usage: art.py MODE THEME [small]
   MODE   background | foreground | square | icon
-  THEME  light | dark
+  THEME  light | dark (both render the graphite artwork)
   small  use the simplified master for 32 and 16 px renders
 """
 import math
@@ -80,22 +80,11 @@ FULL = dict(cx=512, spring=470, R=268, r=188, bottom=814, feet=30, V=(512, 502),
 SMALL = dict(cx=512, spring=500, R=300, r=150, bottom=834, feet=40, V=(512, 560),
              ribs=[], end=0.38, ext=18, lane=46)
 
-# Palettes. The light theme sits on a warm orange tile, so the arch's
-# extruded side and reveal pick up a peach bounce. The dark theme sits on a
-# graphite tile lit mainly by the tunnel: cool porcelain, mint-tinted reveal
-# and rim, a deeper shadow and a mint spill on the tile in front of the arch.
+# Palette. The graphite tile is lit mainly by the tunnel: cool porcelain,
+# mint-tinted reveal and rim, a deep shadow and a mint spill on the tile in
+# front of the arch. Both appearances use it, so the icon is the same in light
+# and dark mode.
 THEMES = {
-    "light": dict(
-        tile=[("0", "#FFCB4F"), ("0.55", "#FF9B2F"), ("1", "#FF6E1E")],
-        sheen=("#FFF5CF", 0.55),
-        face=[("0", "#FFFFFF"), ("0.55", "#FAF6F2"), ("1", "#F0E6DE")],
-        faceShade="#B0603A", faceShadeOp=0.10,
-        side=[("0", "#FBE2CF"), ("1", "#EBAE84")],
-        reveal=[("0", "#FFF3E8"), ("0.5", "#F8DCC6"), ("1", "#EFC2A0")],
-        shadow="#A93300", shadowOp=0.42, contact="#7E2400", contactOp=0.38,
-        innerRim="#FFFFFF", innerRimOp=0.9, spill=0.0, sill="#FFFDF6", sillOp=0.75, edgeGlow=0.0, revealShadeOp=0.10,
-        tileShadow="#5A2A00", tileShadowOp=0.32, rim=("#FFFFFF", 0.32),
-    ),
     "dark": dict(
         tile=[("0", "#383B47"), ("0.5", "#1E2029"), ("1", "#0E0F16")],
         sheen=("#C8D2E8", 0.16),
@@ -108,6 +97,7 @@ THEMES = {
         tileShadow="#000000", tileShadowOp=0.55, rim=("#FFFFFF", 0.14),
     ),
 }
+THEMES["light"] = THEMES["dark"]
 
 
 def stops(lst, op=None):
