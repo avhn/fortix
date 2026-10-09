@@ -104,11 +104,14 @@ type JournalInterface struct {
 // JournalResolver retains source compatibility; Windows never accepts resolver files.
 type JournalResolver struct{ Path, Content, Temporary string }
 
-// resolverIntent is the durable seam for profile-scoped namespace ownership.
+// resolverIntent binds profile-scoped namespaces to a random marker and the returned rule GUID.
 type resolverIntent struct {
 	Mode             string `json:"mode"`
 	Domains, Servers []string
 	Name, Marker     string
+	Nonce            string        `json:"nonce"`
+	Installation     string        `json:"installation"`
+	Profile          string        `json:"profile"`
 	State            mutationState `json:"state"`
 }
 
@@ -118,30 +121,6 @@ type resolverBinding interface {
 	Apply(context.Context, *resolverIntent, func() error) error
 	Remove(context.Context, *resolverIntent) error
 	Recover(context.Context, *resolverIntent) error
-}
-
-// unavailableResolver refuses split DNS until a namespace-owning implementation is supplied.
-type unavailableResolver struct{}
-
-// Apply rejects split DNS before any route or adapter mutation can rely on it.
-func (unavailableResolver) Apply(_ context.Context, intent *resolverIntent, _ func() error) error {
-	if intent != nil && intent.Mode == "split" {
-		return errors.New("split DNS is not yet supported on Windows")
-	}
-	return nil
-}
-
-// Remove leaves unknown namespace ownership intact rather than pretending cleanup succeeded.
-func (unavailableResolver) Remove(ctx context.Context, intent *resolverIntent) error {
-	if intent != nil {
-		return errors.New("split DNS recovery is not yet supported on Windows; journal retained")
-	}
-	return ctx.Err()
-}
-
-// Recover refuses unsupported DNS intent even if its adapter has already disappeared.
-func (unavailableResolver) Recover(ctx context.Context, intent *resolverIntent) error {
-	return (unavailableResolver{}).Remove(ctx, intent)
 }
 
 // stateStore isolates protected durable storage from transaction tests.
@@ -440,9 +419,11 @@ func (m *Manager) validateJournal(j Journal) error {
 		return errors.New("invalid TLS peer journal")
 	}
 	if j.GatewayException != nil {
-		return validateGateway(*j.GatewayException, j.GatewayIP)
+		if err := validateGateway(*j.GatewayException, j.GatewayIP); err != nil {
+			return err
+		}
 	}
-	return nil
+	return validateResolverIntent(j.Resolver, j.Installation, j.Profile)
 }
 
 // removeAdapter delegates only verified durable GUID ownership to the Wintun remover.

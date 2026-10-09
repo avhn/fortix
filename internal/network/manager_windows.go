@@ -16,7 +16,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// Runner preserves the helper's injection surface; Windows networking never invokes commands.
+// Runner preserves the helper's injection surface; Windows routes never invoke generic commands.
 type Runner interface {
 	Run(context.Context, []string, ...string) ([]byte, error)
 }
@@ -64,7 +64,7 @@ func New(o Options) (*Manager, error) {
 	if o.OS != "" && o.OS != "windows" {
 		return nil, errors.New("unsupported network platform")
 	}
-	return &Manager{transaction: make(chan struct{}, 1), active: make(map[string]tunnel), gateways: make(map[string]*gatewayLease), api: ipHelper{}, resolver: unavailableResolver{}, store: protectedState{o.Paths.State}, subnets: o.Subnets}, nil
+	return &Manager{transaction: make(chan struct{}, 1), active: make(map[string]tunnel), gateways: make(map[string]*gatewayLease), api: ipHelper{}, resolver: newNRPTResolver(), store: protectedState{o.Paths.State}, subnets: o.Subnets}, nil
 }
 
 // beginTransaction acquires one cancellable gate for mutations and policy snapshots.
@@ -84,7 +84,7 @@ func (m *Manager) beginTransaction(ctx context.Context) error {
 // endTransaction releases the gate after all durable and in-memory changes finish.
 func (m *Manager) endTransaction() { <-m.transaction }
 
-// CheckUp refuses unsupported transport/DNS before TLS and reserves validated policy.
+// CheckUp preflights transport, DNS namespaces and route reservations before TLS.
 func (m *Manager) CheckUp(ctx context.Context, p *profile.Profile) error {
 	if err := m.beginTransaction(ctx); err != nil {
 		return err
@@ -96,7 +96,20 @@ func (m *Manager) CheckUp(ctx context.Context, p *profile.Profile) error {
 	if p.Backend != "native" {
 		return errors.New("openfortivpn is not supported on Windows")
 	}
-	if err := m.resolver.Apply(ctx, &resolverIntent{Mode: p.DNS.Mode}, nil); err != nil {
+	intent := &resolverIntent{Mode: p.DNS.Mode, Domains: slices.Clone(p.DNS.Domains)}
+	m.mu.Lock()
+	registered := m.active[p.ID]
+	m.mu.Unlock()
+	if p.DNS.Mode == "split" && registered.link != "" {
+		j, err := m.loadJournal(p.ID, registered.attempt)
+		if err != nil {
+			return err
+		}
+		if j.Resolver != nil {
+			intent = j.Resolver
+		}
+	}
+	if err := m.resolver.Apply(ctx, intent, nil); err != nil {
 		return err
 	}
 	var subnets []InterfaceSubnet
@@ -468,7 +481,17 @@ func (m *Manager) Apply(ctx context.Context, p *profile.Profile, effect session.
 	if err := m.validateJournal(*j); err != nil {
 		return err
 	}
-	if err := m.resolver.Apply(ctx, &resolverIntent{Mode: p.DNS.Mode}, nil); err != nil {
+	intent := j.Resolver
+	if p.DNS.Mode == "split" && intent == nil {
+		intent = &resolverIntent{Mode: "split", Installation: j.Installation, Profile: j.Profile, Domains: slices.Clone(p.DNS.Domains), State: mutationIntent}
+		for _, server := range internalNameservers(effect.DNS) {
+			intent.Servers = append(intent.Servers, server.String())
+		}
+		if _, err := normalizeServers(intent.Servers); err != nil {
+			return err
+		}
+	}
+	if err := m.resolver.Apply(ctx, intent, nil); err != nil {
 		return err
 	}
 	prefixes, err := m.reserveNegotiated(ctx, p, effect, *j)
@@ -512,16 +535,7 @@ func (m *Manager) Apply(ctx context.Context, p *profile.Profile, effect session.
 	}
 	if p.DNS.Mode == "split" {
 		if j.Resolver == nil {
-			j.Resolver = &resolverIntent{Mode: "split", Domains: slices.Clone(p.DNS.Domains), State: mutationIntent}
-			for _, server := range internalNameservers(effect.DNS) {
-				if !server.IsValid() || server.IsUnspecified() || server.Zone() != "" {
-					return errors.New("invalid negotiated nameserver")
-				}
-				j.Resolver.Servers = append(j.Resolver.Servers, server.String())
-			}
-			if len(j.Resolver.Servers) == 0 {
-				return errors.New("split DNS requires negotiated nameservers")
-			}
+			j.Resolver = intent
 		}
 		if err := m.resolver.Apply(ctx, j.Resolver, func() error { return m.save(ctx, j, persist) }); err != nil {
 			return err
@@ -576,7 +590,7 @@ func (m *Manager) Teardown(ctx context.Context, supplied Journal) error {
 	if current.attempt != 0 && current.attempt != j.Attempt {
 		return errors.New("network teardown generation mismatch")
 	}
-	if err := m.teardown(ctx, j); err != nil {
+	if err := m.teardown(ctx, &j); err != nil {
 		return err
 	}
 	j.CleanupComplete = true
@@ -590,18 +604,23 @@ func (m *Manager) Recover(ctx context.Context, j Journal) error {
 }
 
 // teardown respects DNS, routes/address, gateway, adapter and metadata dependency order.
-func (m *Manager) teardown(ctx context.Context, j Journal) error {
-	if err := m.validateJournal(j); err != nil {
+func (m *Manager) teardown(ctx context.Context, j *Journal) error {
+	if err := m.validateJournal(*j); err != nil {
 		return err
 	}
-	err := m.resolver.Remove(ctx, j.Resolver)
-	if err != nil {
+	if err := m.resolver.Remove(ctx, j.Resolver); err != nil {
 		return err
 	}
-	if err := m.removeOwnedNetwork(ctx, j); err != nil {
+	if j.Resolver != nil {
+		j.Resolver = nil
+		if err := m.save(ctx, j, nil); err != nil {
+			return err
+		}
+	}
+	if err := m.removeOwnedNetwork(ctx, *j); err != nil {
 		return err
 	}
-	if err := m.releaseGateway(ctx, j); err != nil {
+	if err := m.releaseGateway(ctx, *j); err != nil {
 		return err
 	}
 	// Retain the allocation and journal until transport Release or startup recovery.

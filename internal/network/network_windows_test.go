@@ -657,14 +657,16 @@ func TestWindowsRecoveryOrder(t *testing.T) {
 	}
 }
 
-// TestWindowsSplitDNSRefusal fails before even registering or configuring a link.
+// TestWindowsSplitDNSRefusal rejects a conflicting namespace before link or route mutation.
 func TestWindowsSplitDNSRefusal(t *testing.T) {
 	m, f, s, _ := windowsFixture(t)
+	m.resolver = fakeResolver(&fakeNRPTRunner{policies: []nrptRule{{Namespaces: []string{".example.com"}}}})
 	p := windowsProfile()
 	p.DNS.Mode = "split"
 	p.DNS.Domains = []string{"example.com"}
 	err := m.CheckUp(context.Background(), p)
-	if err == nil || !strings.Contains(err.Error(), "split DNS is not yet supported on Windows") || len(f.events) != 0 || s.writes != 0 {
+	var conflict *ConflictError
+	if !errors.As(err, &conflict) || len(f.events) != 0 || s.writes != 0 {
 		t.Fatalf("split DNS refusal: %v %v", err, f.events)
 	}
 }
@@ -828,17 +830,20 @@ func TestWindowsUnboundAttemptRecovery(t *testing.T) {
 	}
 }
 
-// TestWindowsResolverIntentWithoutAdapter retains unsupported DNS ownership independently of links.
+// TestWindowsResolverIntentWithoutAdapter retains changed DNS ownership independently of links.
 func TestWindowsResolverIntentWithoutAdapter(t *testing.T) {
 	m, f, _, j := windowsFixture(t)
-	j.Resolver = &resolverIntent{Mode: "split", Name: "owned-rule", State: mutationApplied}
+	j.Resolver = nrptFixtureIntent(j, true)
 	if err := m.save(context.Background(), &j, nil); err != nil {
 		t.Fatal(err)
 	}
+	rule := intentRule(j.Resolver)
+	rule.Comment = "changed by another administrator"
+	m.resolver = fakeResolver(&fakeNRPTRunner{rules: []nrptRule{rule}})
 	f.links = f.links[1:]
 	f.events = nil
 	if err := m.RecoverAll(context.Background(), nil); err == nil {
-		t.Fatal("unsupported DNS ownership discarded")
+		t.Fatal("changed DNS ownership discarded")
 	}
 	if len(f.events) != 0 {
 		t.Fatalf("mutated before resolver recovery: %v", f.events)
@@ -1040,7 +1045,7 @@ func TestWindowsGatewayCrashIntent(t *testing.T) {
 // TestWindowsResolverTeardown clears successfully removed DNS intent before completing cleanup.
 func TestWindowsResolverTeardown(t *testing.T) {
 	m, f, _, j := windowsFixture(t)
-	j.Resolver = &resolverIntent{Mode: "split", Name: "owned-rule", State: mutationApplied}
+	j.Resolver = nrptFixtureIntent(j, true)
 	if err := m.save(context.Background(), &j, nil); err != nil {
 		t.Fatal(err)
 	}

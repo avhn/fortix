@@ -82,10 +82,14 @@ func (m *Manager) acquireGateway(ctx context.Context, j *Journal, persist func(J
 		}
 		resource := lease.resource
 		j.GatewayException = &resource
-		if err := m.save(ctx, j, persist); err != nil {
+		if err := m.save(ctx, j, nil); err != nil {
 			return err
 		}
+		// A durable sharer must hold its reference even if the helper callback fails.
 		lease.owners[owner] = struct{}{}
+		if persist != nil {
+			return persist(*j)
+		}
 		return nil
 	}
 	original, err := m.api.bestRoute(peer)
@@ -364,10 +368,19 @@ func (m *Manager) RecoverAll(ctx context.Context, supplied []Journal) error {
 	blocked := make(map[string]bool)
 	retained := make(map[string]bool)
 	var failures []error
-	for _, j := range journals {
+	for i := range journals {
+		j := &journals[i]
 		if err := m.resolver.Recover(ctx, j.Resolver); err != nil {
-			blocked[journalName(j)] = true
+			blocked[journalName(*j)] = true
 			failures = append(failures, err)
+			continue
+		}
+		if j.Resolver != nil {
+			j.Resolver = nil
+			if err := m.save(ctx, j, nil); err != nil {
+				blocked[journalName(*j)] = true
+				failures = append(failures, err)
+			}
 		}
 	}
 	for _, j := range journals {
