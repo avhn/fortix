@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Fortix ring icon">
+  <rect x="32" y="32" width="960" height="960" rx="216" fill="#192333"/>
+  <circle cx="512" cy="512" r="310" fill="none" stroke="#ffffff" stroke-width="72"/>
+  <circle cx="512" cy="512" r="168" fill="#ffffff"/>
+</svg>
