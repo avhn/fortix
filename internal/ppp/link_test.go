@@ -109,6 +109,19 @@ func (c *fakeClock) NewTimer(delay time.Duration) Timer {
 	return timer
 }
 
+// dueWithin reports whether a registered timer expires within delay of simulated now.
+func (c *fakeClock) dueWithin(delay time.Duration) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	limit := c.now.Add(delay)
+	for _, due := range c.timers {
+		if !due.After(limit) {
+			return true
+		}
+	}
+	return false
+}
+
 // C returns the timer's one-shot event stream.
 func (t *fakeTimer) C() <-chan time.Time { return t.ch }
 
@@ -119,8 +132,15 @@ func (t *fakeTimer) Stop() {
 	delete(t.clock.timers, t)
 }
 
-// advance delivers each elapsed timer at most once without sleeping.
+// advance delivers each elapsed timer at most once. The worker reads Now before it
+// registers a timer, so advance first waits briefly for a timer due inside the step;
+// advancing in that gap would push the registration a full step past the target.
 func (c *fakeClock) advance(delay time.Duration) {
+	for deadline := time.Now().Add(2 * time.Second); time.Now().Before(deadline); time.Sleep(time.Millisecond) {
+		if c.dueWithin(delay) {
+			break
+		}
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.now = c.now.Add(delay)
