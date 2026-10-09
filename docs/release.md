@@ -6,8 +6,10 @@
 flowchart LR
     Tag[Version tag] --> Go[Go checks and package builds]
     Tag --> Mac[Swift checks and arm64 app build]
+    Tag --> Windows[Windows x64 preview build]
     Go --> Assets[Complete artifact set]
     Mac --> Assets
+    Windows --> Assets
     Assets --> Hash[One combined checksums.txt]
     Hash --> Publish[Single release publisher]
     Publish --> Verify[Verify published assets]
@@ -17,8 +19,8 @@ flowchart LR
 ```
 
 The [release workflow](../.github/workflows/release.yml) builds without publishing
-in its Go and macOS jobs. A dependent publisher validates the combined artifact
-set, creates a sorted SHA-256 `checksums.txt`, and publishes all assets together.
+in its Go, macOS, and Windows jobs. A dependent publisher validates the combined
+artifact set, creates a sorted SHA-256 `checksums.txt`, and publishes all assets together.
 One platform job succeeding is not a complete release. The publisher downloads
 and verifies the published assets before either package-channel job starts. Each
 channel downloads and verifies them again before using the final manifest.
@@ -35,7 +37,8 @@ fails. Channel updates are serialized independently to avoid concurrent pushes.
 | `fortix_*_linux_*.deb` | amd64/arm64: systemd package, CLI/helper/tray, license and notices |
 | `fortix_*_darwin_arm64.dmg` | macOS 13+ arm64 app with an Applications link |
 | `fortix_*_darwin_arm64.app.zip` | Same arm64 Fortix.app bundle in a zip |
-| `checksums.txt` | All eight downloadable assets above |
+| `fortix_*_windows_amd64.zip` | Windows 10 22H2/11 x64 preview: CLI, helper, self-contained desktop app, Wintun DLL, README, license and notices |
+| `checksums.txt` | All nine downloadable assets above |
 
 The app bundles the CLI, helper, and pinentry under `Contents/Resources/libexec`,
 plus `LICENSE` and `THIRD_PARTY_NOTICES.txt`. It does not bundle openfortivpn,
@@ -49,6 +52,21 @@ module versions and licenses; they do not change fortix's license. Optional
 openfortivpn is a separate executable. Distributing any bundled copy of that
 executable or its libraries requires their notices and corresponding source
 obligations as well.
+
+The `windows` job builds versioned CLI/helper executables with
+`CGO_ENABLED=0`, `-trimpath`, `-buildvcs=false`, and the same version ldflags as
+the Unix builds. It publishes the self-contained `win-x64` desktop app, verifies
+the pinned Wintun archive and DLL hashes, and creates a deterministic ZIP. The
+publisher waits for all three platform jobs; the Windows ZIP joins the same
+combined checksum manifest, without changing the Unix GoReleaser configuration.
+
+The optional signing hook runs `scripts/sign-windows.sh` only when
+`WINDOWS_SIGNING_CERT` is present. The placeholder prints an explicit signing
+skip notice even when configured; it does not decode certificates or sign files.
+Certificate provisioning and signing implementation remain future work, so the
+preview binaries remain unsigned. See [Windows preview](windows.md) for
+SmartScreen, checksum verification, installation, and uninstall instructions.
+winget manifests are generated separately; public catalog submission is pending.
 
 ## Package-channel publishing
 
@@ -289,10 +307,58 @@ MFA gateways separately, full/custom/gateway routing, split DNS, clean shutdown,
 recovery, group enrollment, and installation on clean supported hosts. Do not
 infer those outcomes from fixture-only checks.
 
+## Unix release payload proof
+
+Run `bash scripts/check-release-unchanged.sh` before accepting Unix release
+payload equivalence. It compares a temporary detached `d7e3791` checkout with
+the current working tree, including uncommitted changes. `FORTIX_UNIX_BASE`
+overrides the baseline. No GoReleaser installation is required or attempted.
+The script requires `timeout` (or `gtimeout` on macOS) to bound each Go build.
+
+Both trees build all ten configured Unix Go binaries at version `0.3.0` with
+`SOURCE_DATE_EPOCH=1767225600`, one Go toolchain, `CGO_ENABLED=0`, bounded
+`GOMAXPROCS=2`/`GOFLAGS=-p=2`, and a shared cache. The configured release ldflags
+are `-s -w -X github.com/avhn/fortix/internal/buildinfo.Version=0.3.0`.
+Neither `.goreleaser.yaml` nor GoReleaser v2.18.2 enables `-trimpath` for these
+builds. The proof therefore copies each tree into the same temporary absolute
+source path and adds `-buildvcs=false` identically to exclude commit and dirty-tree
+stamping. Raw release-binary SHA-256 values are printed as notices, not used as
+an equivalence gate: build headers and moved declarations change line tables and
+symbol addresses without changing application behavior.
+
+Because release binaries use `-s`, each build also produces a diagnostic companion
+with `-s` omitted and `-buildid=` to exclude the source-dependent Go build ID.
+The gate compares sorted `go tool nm -size -sort name`
+symbol names, kinds and sizes, plus per-symbol SHA-256 hashes of `go tool objdump`
+instructions. Only the sizes of `runtime.pclntab` and `runtime.epclntab` are
+normalized, with an explicit notice: source-line tables and Mach-O's inferred
+end-marker padding change with source layout. Their names and kinds remain checked. It removes source locations, instruction addresses, encoded bytes,
+addresses/branch targets, PC-relative displacements, symbol-relative offsets and
+ARM64 ADRP address pairs. Named calls, opcodes, registers, ordinary constants and
+other operands remain compared. Failures list differing
+symbols. This is symbol-level equivalence, not byte identity or a complete semantic
+proof: normalized address operands can conceal changed branch or data targets.
+The separate source-equivalence proof is required to cover that limitation.
+
+For non-binary inputs the script compares SHA-256 and file bytes: archive documents, Debian units and
+maintainer scripts, the release configuration, macOS sources and build scripts,
+and rendered Homebrew formula/cask output from a fixed eight-line Unix checksum
+fixture. Only `packaging/macos/AppIcon.icns` and `packaging/macos/Assets.car` are
+allowed icon differences; their old and new hashes are printed. apt repository
+inputs are checked, but actual Debian package/index/signature generation and
+Swift app/DMG builds are explicitly skipped. This is not a container-byte or
+live-installation proof.
+
+A mismatch exits nonzero after reporting each differing artifact or symbol. The
+Unix unchanged workflow runs this check alongside the separate source-equivalence
+proof. Both gates must pass; neither establishes byte-identical release binaries,
+archives, Debian packages, or Swift bundles.
+
 ## Limitations
 
 - The macOS app and DMG are arm64 only; Intel macOS has CLI archives.
-- No Developer ID signing, notarization, automatic updates, or Windows package.
+- No Developer ID signing, notarization, or automatic updates. Windows x64 is an
+  unsigned preview; Windows arm64 is compile-checked only.
 - No openfortivpn bundled with the app. MFA requires explicitly installed optional
   support and a compatible gateway; native never handles second factors.
 - No native SAML/SSO, client-certificate authentication, DTLS, PAP/CHAP,
