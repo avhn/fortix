@@ -131,10 +131,13 @@ another network manager.
 
 With the native backend, `preserve_lan` (default true) removes the networks of
 physical interfaces (Wi-Fi, Ethernet, local bridges) from the routes a gateway
-pushes in `gateway` and `full` mode. A pushed route inside a local network is
-skipped; a broader one is split into the smallest prefixes that cover the rest,
-for example `192.168.0.0/22` around a `192.168.1.0/24` LAN becomes
-`192.168.0.0/24` and `192.168.2.0/23`. The helper log names the narrowed routes
+pushes in `gateway` and `full` mode. A pushed route broader than the local
+network is split into the smallest prefixes that cover the rest, for example
+`192.168.0.0/22` around a `192.168.1.0/24` LAN becomes `192.168.0.0/24` and
+`192.168.2.0/23`. Carving fails closed: a local network broader than `/16`, or
+one that covers a whole pushed route, still refuses the attempt, because any
+network can hand out such a subnet and would otherwise pull company traffic
+out of the tunnel. The helper log names the narrowed routes
 and lists what was installed. Hosts the company runs inside the same range as
 your LAN are then unreachable over the VPN. Tunnel interfaces are never carved,
 so an overlap with another active VPN is still refused. Explicit `false` keeps

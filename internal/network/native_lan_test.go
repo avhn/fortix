@@ -20,8 +20,9 @@ func prefixes(values ...string) []netip.Prefix {
 	return result
 }
 
-// TestCarveLocalNetworks covers splitting, dropping, tunnel exemption, default
-// halves and the deterministic order revalidation relies on.
+// TestCarveLocalNetworks covers splitting, tunnel exemption, default halves, the
+// deterministic order revalidation relies on, and the fail-closed cases where a
+// local network is too broad or would swallow a whole pushed route.
 func TestCarveLocalNetworks(t *testing.T) {
 	lan := []InterfaceSubnet{{"en0", netip.MustParsePrefix("198.18.1.23/24")}, {"utun4", netip.MustParsePrefix("10.20.5.0/24")}}
 	for _, tc := range []struct {
@@ -30,8 +31,6 @@ func TestCarveLocalNetworks(t *testing.T) {
 		want   []netip.Prefix
 	}{
 		{"split around LAN", prefixes("198.18.0.0/22"), prefixes("198.18.0.0/24", "198.18.2.0/23")},
-		{"route inside LAN dropped", prefixes("198.18.1.128/25", "10.30.3.0/24"), prefixes("10.30.3.0/24")},
-		{"LAN equal dropped", prefixes("198.18.1.0/24"), prefixes()},
 		{"disjoint unchanged", prefixes("10.30.4.0/24", "10.30.3.0/24"), prefixes("10.30.3.0/24", "10.30.4.0/24")},
 		{"tunnel networks stay", prefixes("10.20.0.0/16"), prefixes("10.20.0.0/16")},
 		{"default halves stay", prefixes("0.0.0.0/1", "128.0.0.0/1"), prefixes("0.0.0.0/1", "128.0.0.0/1")},
@@ -47,6 +46,31 @@ func TestCarveLocalNetworks(t *testing.T) {
 			again, err := carveLocalNetworks(tc.pushed, reversed)
 			if err != nil || !slices.Equal(again, got) {
 				t.Fatalf("order depends on interfaces: %v vs %v", again, got)
+			}
+		})
+	}
+}
+
+// TestCarveLocalNetworksFailsClosed refuses, with the route and interface named,
+// when the local network covers a whole pushed route or is broader than /16, so a
+// hostile DHCP lease cannot pull company routes out of the tunnel.
+func TestCarveLocalNetworksFailsClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		local  string
+		pushed string
+	}{
+		{"route inside LAN", "198.18.1.0/24", "198.18.1.128/25"},
+		{"LAN equal to route", "198.18.1.0/24", "198.18.1.0/24"},
+		{"broad DHCP subnet", "10.16.0.0/12", "10.0.0.0/8"},
+		{"broad subnet covering route", "10.0.0.0/8", "10.30.3.0/24"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			subnets := []InterfaceSubnet{{"en0", netip.MustParsePrefix(tc.local)}}
+			_, err := carveLocalNetworks(prefixes(tc.pushed), subnets)
+			var conflict *ConflictError
+			if !errors.As(err, &conflict) || !strings.Contains(conflict.Detail, tc.pushed) || !strings.Contains(conflict.Detail, "en0") {
+				t.Fatalf("carve accepted or unnamed: %v", err)
 			}
 		})
 	}
@@ -77,7 +101,7 @@ func TestNativeGatewayKeepsLAN(t *testing.T) {
 			}
 			e, j := configuredNative(t, m, p, 0)
 			// en0 is 192.0.2.0/24 in the fixture host.
-			e.PushedPrefixes = prefixes("10.20.0.0/16", "192.0.2.0/23", "192.0.2.128/25")
+			e.PushedPrefixes = prefixes("10.20.0.0/16", "192.0.2.0/23")
 			if mode == "full" {
 				// Full mode adds the /1 halves only when the gateway pushes a default.
 				e.PushedPrefixes = append(e.PushedPrefixes, netip.MustParsePrefix("0.0.0.0/0"))

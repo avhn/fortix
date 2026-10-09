@@ -53,16 +53,23 @@ func preserveLAN(p *profile.Profile) bool {
 	return p.Routes.PreserveLAN == nil || *p.Routes.PreserveLAN
 }
 
+// minCarvedLANBits is the broadest local network that may be carved. A network can
+// hand out any subnet over DHCP; accepting a broad one would let it pull company
+// routes out of the tunnel, so broader overlaps keep refusing the attempt.
+const minCarvedLANBits = 16
+
 // maxCarvedRoutes bounds the routes produced by carving, so a hostile push of many
 // broad prefixes cannot expand into an unbounded number of kernel routes.
 const maxCarvedRoutes = 1024
 
 // carveLocalNetworks removes the networks of physical interfaces (Wi-Fi, Ethernet,
 // local bridges) from gateway-selected routes, so the gateway cannot claim the LAN
-// the client sits on. A route inside a local network is dropped; a broader route is
-// split into the smallest prefixes that cover the rest. Default halves are left
-// alone because the connected LAN route is already more specific. Tunnel
-// interfaces are not carved: a clash with another VPN stays a conflict.
+// the client sits on. A broader route is split into the smallest prefixes that
+// cover the rest. Carving fails closed: a local network broader than /16, or one
+// that covers a whole pushed route, refuses the attempt instead of moving company
+// traffic onto the local network. Default halves are left alone because the
+// connected LAN route is already more specific. Tunnel interfaces are not carved:
+// a clash with another VPN stays a conflict.
 func carveLocalNetworks(prefixes []netip.Prefix, subnets []InterfaceSubnet) ([]netip.Prefix, error) {
 	result := make([]netip.Prefix, 0, len(prefixes))
 	for _, prefix := range prefixes {
@@ -73,6 +80,9 @@ func carveLocalNetworks(prefixes []netip.Prefix, subnets []InterfaceSubnet) ([]n
 					continue
 				}
 				local := subnet.Prefix.Masked()
+				if prefix.Overlaps(local) && (local.Bits() < minCarvedLANBits || local.Bits() <= prefix.Bits()) {
+					return nil, &ConflictError{fmt.Sprintf("negotiated route %s overlaps %s on %s", prefix, local, subnet.Interface)}
+				}
 				next := make([]netip.Prefix, 0, len(parts)+1)
 				for _, part := range parts {
 					next = append(next, subtractPrefix(part, local)...)
