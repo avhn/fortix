@@ -1,0 +1,32 @@
+name: Unix unchanged
+
+on:
+  push:
+    branches: [feature/v0.3, dev, main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GOMAXPROCS: "2"
+  GOFLAGS: -p=2
+
+jobs:
+  proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Test Unix proof guards
+        run: go test ./scripts/_unixproof
+      - name: Prove Unix sources are unchanged
+        run: bash scripts/check-unix-unchanged.sh
