@@ -182,6 +182,7 @@ func (d *decoder) walk(raw json.RawMessage, depth int) error {
 }
 
 // record projects one VPN record into a validated, defaulted profile or a named warning.
+// Backend remains omitted so the editor can select MFA before resolving its default.
 // Server must contain a host only; embedded ports are rejected rather than guessed.
 // Numeric strings are accepted because plist exporters can encode ports and types either way.
 func (d *decoder) record(fields map[string]json.RawMessage) error {
@@ -204,7 +205,7 @@ func (d *decoder) record(fields map[string]json.RawMessage) error {
 		return nil
 	}
 	var p profile.Profile
-	p.SchemaVersion, p.Backend = 1, "openfortivpn"
+	p.SchemaVersion = 1
 	for _, field := range []struct {
 		key    string
 		target *string
@@ -237,6 +238,8 @@ func (d *decoder) record(fields map[string]json.RawMessage) error {
 		warn("invalid SSL VPN fields")
 		return nil
 	}
+	// Validate the resolved choice but do not pin the draft before MFA is edited.
+	p.Backend = ""
 	d.used[p.ID] = true
 	d.drafts = append(d.drafts, p)
 	return nil

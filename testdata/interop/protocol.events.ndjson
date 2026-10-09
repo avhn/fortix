@@ -1,0 +1,17 @@
+{"type":"state","profile":"work","attempt":1,"state":"disconnected","detail":"","wanted":false,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"starting","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"waiting_password","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"waiting_code","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"authenticating","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"negotiating","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"configuring","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"connected","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"waiting_trust","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"backoff","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"stopping","detail":"","wanted":true,"initiated":true,"cleanup_pending":false}
+{"type":"state","profile":"work","attempt":1,"state":"failed","detail":"","wanted":true,"initiated":true,"cleanup_pending":true}
+{"type":"state","profile":"work","attempt":2,"state":"failed","detail":"pushed route rejected","code":"CONFLICT","wanted":true,"initiated":false,"cleanup_pending":true}
+{"type":"challenge","profile":"work","attempt":1,"challenge_id":"sample-password","kind":"password","prompt":"Password \u003c\u0026\u003e 密碼"}
+{"type":"challenge","profile":"work","attempt":1,"challenge_id":"sample-code","kind":"code","prompt":"Code"}
+{"type":"cert","profile":"work","attempt":1,"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","subject":"CN=vpn.example.com","issuer":"CN=Example CA"}
+{"type":"log","profile":"work","attempt":1,"line":"INFO: sanitized \u003c\u0026\u003e 東京"}

@@ -1,0 +1,16 @@
+{"id":"hello-1","op":"hello","version":"0.2.0"}
+{"id":"subscribe-1","op":"subscribe","logs":true}
+{"id":"list-1","op":"profile.list"}
+{"id":"get-1","op":"profile.get","profile":"work"}
+{"id":"put-omitted","op":"profile.put","profile_json":{"schema_version":1,"id":"work","name":"Work \u003c\u0026\u003e 東京","gateway":{"host":"vpn.example.com","port":443},"username":"jane.doe","mfa":{"mode":"none"},"routes":{"mode":"gateway","preserve_lan":true},"dns":{"mode":"none"}}}
+{"id":"put-native","op":"profile.put","profile_json":{"schema_version":1,"id":"work","name":"Work \u003c\u0026\u003e 東京","gateway":{"host":"vpn.example.com","port":443},"username":"jane.doe","mfa":{"mode":"none"},"routes":{"mode":"gateway","preserve_lan":true},"dns":{"mode":"none"},"backend":"native"}}
+{"id":"put-external","op":"profile.put","profile_json":{"schema_version":1,"id":"work","name":"Work \u003c\u0026\u003e 東京","gateway":{"host":"vpn.example.com","port":443},"username":"jane.doe","mfa":{"mode":"push"},"routes":{"mode":"gateway","preserve_lan":true},"dns":{"mode":"none"},"backend":"openfortivpn"}}
+{"id":"up-1","op":"up","profile":"work"}
+{"id":"down-1","op":"down","profile":"work"}
+{"id":"down-all","op":"down","all":true}
+{"id":"status-1","op":"status"}
+{"id":"answer-1","op":"answer","challenge_id":"sample-password","secret":"synthetic \u003c\u0026\u003e 密碼"}
+{"id":"cancel-1","op":"cancel","challenge_id":"sample-code"}
+{"id":"trust-1","op":"trust","profile":"work","digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+{"id":"logs-1","op":"logs","profile":"work","lines":50}
+{"id":"delete-1","op":"profile.delete","profile":"work"}

@@ -7,17 +7,19 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/avhn/fortix/internal/backend"
 )
 
 // Kind identifies a credential purpose inferred from the SETKEYINFO suffix.
 // It is only a hint; the relay must independently authenticate and bind the attempt.
-type Kind string
+type Kind = backend.Kind
 
 // Pinentry constants define credential kinds, outgoing data and incoming command bounds
 // including LF, and a fixed cancellation reply that never contains errors or secrets.
 const (
-	Password Kind = "password"
-	Code     Kind = "code"
+	Password = backend.Password
+	Code     = backend.Code
 
 	MaxAssuanLine    = 1000
 	maxAssuanCommand = 4096
@@ -26,11 +28,7 @@ const (
 
 // Request contains decoded, bounded prompt metadata, never a credential response.
 // Kind is Password for _password and Code for _otp or _2fa; unknown suffixes are refused.
-type Request struct {
-	Kind    Kind
-	KeyInfo string
-	Prompt  string
-}
+type Request = backend.Request
 
 // Serve answers Assuan commands from r on w, asking only for recognized GETPIN requests.
 // ask receives ctx and decoded metadata and must honor cancellation; returned secrets

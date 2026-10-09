@@ -1,0 +1,110 @@
+[
+  {
+    "name": "ascii",
+    "id": "work",
+    "host": "vpn.example.com",
+    "port": 443,
+    "username": "jane.doe",
+    "tuple_json": "[\"vpn.example.com\",443,\"jane.doe\"]",
+    "service": "fortix",
+    "account": "work:5e6669dcae3294599db7964a197ed5f9a1c1193be17f0a1a6fae99e9a6c668b3:password",
+    "password": "synthetic-password",
+    "stored_password": "go-keyring-base64:c3ludGhldGljLXBhc3N3b3Jk"
+  },
+  {
+    "name": "port",
+    "id": "work",
+    "host": "vpn.example.com",
+    "port": 10443,
+    "username": "jane.doe",
+    "tuple_json": "[\"vpn.example.com\",10443,\"jane.doe\"]",
+    "service": "fortix",
+    "account": "work:f6d1878d904024ee6dfabfaf5ffb75707feced941f296511dbf429c1f3703789:password",
+    "password": "synthetic-password",
+    "stored_password": "go-keyring-base64:c3ludGhldGljLXBhc3N3b3Jk"
+  },
+  {
+    "name": "case-sensitive-host",
+    "id": "work",
+    "host": "VPN.example.com",
+    "port": 443,
+    "username": "jane.doe",
+    "tuple_json": "[\"VPN.example.com\",443,\"jane.doe\"]",
+    "service": "fortix",
+    "account": "work:92fe35e330ff958979319ce725eaca49545122bb26be36130df380171441e0f6:password",
+    "password": "synthetic-password",
+    "stored_password": "go-keyring-base64:c3ludGhldGljLXBhc3N3b3Jk"
+  },
+  {
+    "name": "unicode",
+    "id": "unicode",
+    "host": "vpn.example.com",
+    "port": 443,
+    "username": "\u0130pek.\u6771\u4eac",
+    "tuple_json": "[\"vpn.example.com\",443,\"\u0130pek.\u6771\u4eac\"]",
+    "service": "fortix",
+    "account": "unicode:c4f955a2f5814ef6ac45ff82cf58f5a45c88d8cf02b6e0f6569e3e1a3b2c9e44:password",
+    "password": "synth\u00e9tique \u5bc6\u78bc",
+    "stored_password": "go-keyring-base64:c3ludGjDqXRpcXVlIOWvhueivA=="
+  },
+  {
+    "name": "html-sensitive",
+    "id": "html",
+    "host": "vpn.example.com",
+    "port": 443,
+    "username": "user<&>name",
+    "tuple_json": "[\"vpn.example.com\",443,\"user\\u003c\\u0026\\u003ename\"]",
+    "service": "fortix",
+    "account": "html:d508ee623eb8d95c1eeb0cd65b3cef2d18cf8150a532dbfcd2651f4b932c6b4d:password",
+    "password": "synthetic <&>",
+    "stored_password": "go-keyring-base64:c3ludGhldGljIDwmPg=="
+  },
+  {
+    "name": "json-escapes",
+    "id": "escaped",
+    "host": "vpn.example.com",
+    "port": 443,
+    "username": "quote\"slash\\name",
+    "tuple_json": "[\"vpn.example.com\",443,\"quote\\\"slash\\\\name\"]",
+    "service": "fortix",
+    "account": "escaped:1e959241d6994abf0d61c1e06fef992ab7cc04bcbe04a59068c5fdf4a47ae900:password",
+    "password": "synthetic\nline\tend",
+    "stored_password": "go-keyring-base64:c3ludGhldGljCmxpbmUJZW5k"
+  },
+  {
+    "name": "unicode-separators",
+    "id": "separators",
+    "host": "vpn.example.com",
+    "port": 443,
+    "username": "user\u2028name\u2029end",
+    "tuple_json": "[\"vpn.example.com\",443,\"user\\u2028name\\u2029end\"]",
+    "service": "fortix",
+    "account": "separators:abb286f96b7e44b0d885ce6cec0fa5ad214015184e9e731cb7337f4b8eceba8a:password",
+    "password": "synthetic",
+    "stored_password": "go-keyring-base64:c3ludGhldGlj"
+  },
+  {
+    "name": "ipv6",
+    "id": "ipv6",
+    "host": "2001:db8::1",
+    "port": 443,
+    "username": "jane.doe",
+    "tuple_json": "[\"2001:db8::1\",443,\"jane.doe\"]",
+    "service": "fortix",
+    "account": "ipv6:d582836889a490f73b244e3a53af03990d5f8d52873f35430f00b8b9ff4a89bf:password",
+    "password": "synthetic",
+    "stored_password": "go-keyring-base64:c3ludGhldGlj"
+  },
+  {
+    "name": "empty-password",
+    "id": "empty",
+    "host": "vpn.example.com",
+    "port": 443,
+    "username": "jane.doe",
+    "tuple_json": "[\"vpn.example.com\",443,\"jane.doe\"]",
+    "service": "fortix",
+    "account": "empty:5e6669dcae3294599db7964a197ed5f9a1c1193be17f0a1a6fae99e9a6c668b3:password",
+    "password": "",
+    "stored_password": "go-keyring-base64:"
+  }
+]

@@ -4,7 +4,7 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/avhn/fortix/internal/openfortivpn"
+	"github.com/avhn/fortix/internal/backend"
 )
 
 // Phase is a public session status. Stopping waits for child exit and cleanup.
@@ -45,10 +45,12 @@ func DefaultDeadlines() Deadlines {
 	return Deadlines{Connect: 30 * time.Second, Authenticate: 60 * time.Second, Human: 120 * time.Second, Negotiate: 75 * time.Second, Network: 10 * time.Second, Stop: 10 * time.Second}
 }
 
-// Options selects pure timing and retry policy for a profile's session.
-// MFAMode is the validated profile mode. Push permits at most one automatic reconnect
-// per explicit Up so a flapping gateway cannot repeatedly prompt for approvals.
+// Options selects backend, timing, and retry policy for a profile's session.
+// Backend and MFAMode are validated profile values. Omitted Backend keeps the external
+// lifecycle for existing callers; native supervisors must select native explicitly.
+// Push permits at most one automatic reconnect per explicit Up.
 type Options struct {
+	Backend   string
 	MFAMode   string
 	Deadlines Deadlines
 	Backoff   BackoffPolicy
@@ -61,12 +63,14 @@ type Options struct {
 // PendingUp queues an explicit reconnect during a normal stop, never failed cleanup.
 // CleanupRetries bounds automatic removal retries; CleanupRetryPending means the timer
 // schedules removal rather than timing an in-flight cleanup. Reset can retry exhausted
-// cleanup without starting a child. Treat slices as immutable; Next copies DNS payloads.
+// cleanup without starting a transport. Treat slices as immutable; Next copies DNS and
+// pushed-prefix payloads. Link records backend ownership; native never has a child PID.
 type State struct {
 	Profile             string
 	Attempt             uint64
 	Phase               Phase
 	Detail              string
+	Backend             string
 	MFAMode             string
 	Deadlines           Deadlines
 	Policy              BackoffPolicy
@@ -84,30 +88,34 @@ type State struct {
 	CleanupStarted      bool
 	CleanupRetries      uint32
 	CleanupRetryPending bool
+	Link                backend.LinkIdentity
+	PeerIP              netip.Addr
+	PushedPrefixes      []netip.Prefix
+	MTU                 int
 	LocalIP             netip.Addr
 	DNS                 []netip.Addr
 	Suffix              string
 	Interface           string
-	Certificate         openfortivpn.CertRejected
+	Certificate         backend.CertRejected
 }
 
 // Failure categorizes terminal causes independently of raw diagnostics.
 // Only transport loss after a working connection is eligible for automatic reconnect.
-type Failure string
+type Failure = backend.Failure
 
 // Failure categories distinguish rejection, conflicts, deadlines, and child lifecycle.
 // They are helper-generated values, never credential responses or untrusted log text.
 const (
-	TransportFailure Failure = "transport"
-	AuthFailure      Failure = "authentication"
-	CertFailure      Failure = "certificate"
-	ConflictFailure  Failure = "conflict"
-	NetworkFailure   Failure = "network"
-	InterfaceFailure Failure = "interface"
-	TimeoutFailure   Failure = "timeout"
-	ProcessFailure   Failure = "process"
-	CancelledFailure Failure = "cancelled"
-	TunnelFailure    Failure = "tunnel_mode"
+	TransportFailure = backend.TransportFailure
+	AuthFailure      = backend.AuthFailure
+	CertFailure      = backend.CertFailure
+	ConflictFailure  = backend.ConflictFailure
+	NetworkFailure   = backend.NetworkFailure
+	InterfaceFailure = backend.InterfaceFailure
+	TimeoutFailure   = backend.TimeoutFailure
+	ProcessFailure   = backend.ProcessFailure
+	CancelledFailure = backend.CancelledFailure
+	TunnelFailure    = backend.TunnelFailure
 )
 
 // EventKind identifies supervisor, client, and stdout inputs for Next.
@@ -115,7 +123,7 @@ const (
 type EventKind string
 
 // Reducer inputs separate process exit from cleanup completion and network outcomes.
-// Output carries an openfortivpn observation; Deadline carries the active TimerID.
+// Output carries a shared backend observation; Deadline carries the active TimerID.
 const (
 	Up                  EventKind = "up"
 	Down                EventKind = "down"
@@ -143,8 +151,8 @@ type Event struct {
 	Profile     string
 	Attempt     uint64
 	Kind        EventKind
-	Observation openfortivpn.Event
-	Request     openfortivpn.Request
+	Observation backend.Event
+	Request     backend.Request
 	Digest      string
 	TimerID     uint64
 	Failure     Failure
@@ -157,7 +165,9 @@ type Event struct {
 // Timer and process effects always retain their originating attempt identity.
 type EffectKind string
 
-// Effect kinds describe child lifecycle, timers, networking, and public notifications.
+// Effect kinds describe transport lifecycle, timers, networking, and notifications.
+// Process names remain compatible with existing supervisors; native StartProcess and
+// StopProcess start/stop in-process work. Native never emits KillProcess.
 // CancelChallenge invalidates pending replies; no effect contains a credential value.
 const (
 	StartProcess    EffectKind = "start_process"
@@ -176,26 +186,32 @@ const (
 
 // Effect carries immutable action data for a supervisor, never performs that action.
 // Phase and Detail describe state notifications; Duration and TimerID describe timers;
-// address/interface fields describe networking; Request and Certificate describe prompts.
+// link/address/interface fields describe networking; Request and Certificate describe
+// prompts. Native link identity never contains a child PID; networking slices are copied.
 type Effect struct {
-	Kind        EffectKind
-	Profile     string
-	Attempt     uint64
-	Phase       Phase
-	Detail      string
-	TimerID     uint64
-	Duration    time.Duration
-	LocalIP     netip.Addr
-	DNS         []netip.Addr
-	Suffix      string
-	Interface   string
-	Request     openfortivpn.Request
-	Certificate openfortivpn.CertRejected
+	Kind           EffectKind
+	Profile        string
+	Attempt        uint64
+	Phase          Phase
+	Detail         string
+	TimerID        uint64
+	Duration       time.Duration
+	Link           backend.LinkIdentity
+	PeerIP         netip.Addr
+	PushedPrefixes []netip.Prefix
+	MTU            int
+	LocalIP        netip.Addr
+	DNS            []netip.Addr
+	Suffix         string
+	Interface      string
+	Request        backend.Request
+	Certificate    backend.CertRejected
 }
 
 // New returns an idle session for profileID with defaulted timing and retry options.
 // profileID and MFAMode must come from a validated profile; it performs no I/O and
-// cannot fail. Generation zero means no child has been started yet.
+// cannot fail. Generation zero means no transport has been started yet. Native is
+// explicit; omitted Backend preserves the external process lifecycle for old callers.
 func New(profileID string, opts Options) State {
 	d := opts.Deadlines
 	defaults := DefaultDeadlines()
@@ -208,5 +224,9 @@ func New(profileID string, opts Options) State {
 			*pair.value = *pair.fallback
 		}
 	}
-	return State{Profile: profileID, Phase: Disconnected, MFAMode: opts.MFAMode, Deadlines: d, Policy: opts.Backoff.normalized()}
+	selected := opts.Backend
+	if selected == "" {
+		selected = "openfortivpn"
+	}
+	return State{Profile: profileID, Phase: Disconnected, Backend: selected, MFAMode: opts.MFAMode, Deadlines: d, Policy: opts.Backoff.normalized()}
 }

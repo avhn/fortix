@@ -1,82 +1,63 @@
 package openfortivpn
 
-import "net/netip"
+import "github.com/avhn/fortix/internal/backend"
 
-// Event is a sealed stdout observation. Unknown text is diagnostic, not a failure.
-// Certificate observations may span several input lines before an Event is emitted.
-type Event interface{ vpnEvent() }
-
-// eventTag seals event implementations while keeping concrete value types lightweight.
-// Embedding it supplies a marker only, with no data or I/O.
-type eventTag struct{}
-
-// vpnEvent marks an observation as an Event and has no inputs, output, or failure.
-func (eventTag) vpnEvent() {}
+// Event is the shared sealed observation type; unknown text remains diagnostic only.
+type Event = backend.Event
 
 // ConnectedToGateway indicates a completed initial TLS connection, not authentication.
-type ConnectedToGateway struct{ eventTag }
+type ConnectedToGateway = backend.ConnectedToGateway
 
 // Authenticated indicates that the gateway accepted authentication for this attempt.
-type Authenticated struct{ eventTag }
+type Authenticated = backend.Authenticated
 
 // AuthFailed indicates rejected authentication without guessing which credential failed.
-type AuthFailed struct{ eventTag }
+type AuthFailed = backend.AuthFailed
 
 // TunnelModeDenied indicates that the gateway refused the tunnel protocol or realm.
-type TunnelModeDenied struct{ eventTag }
+type TunnelModeDenied = backend.TunnelModeDenied
 
-// VPNAllocated indicates that the gateway allocated VPN resources after authentication.
-type VPNAllocated struct{ eventTag }
+// VPNAllocated indicates allocated gateway resources after authentication.
+type VPNAllocated = backend.VPNAllocated
 
-// GotAddresses contains the local address, usable DNS addresses, and advertised suffix.
-// Invalid address lines are Unknown; unspecified DNS addresses are omitted.
-type GotAddresses struct {
-	eventTag
-	LocalIP netip.Addr
-	DNS     []netip.Addr
-	Suffix  string
-}
+// GotAddresses contains the local address, DNS addresses, and advertised suffix.
+type GotAddresses = backend.GotAddresses
 
-// NegotiationComplete indicates completed PPP negotiation, before helper networking.
-type NegotiationComplete struct{ eventTag }
+// NegotiationComplete indicates completed PPP negotiation before helper networking.
+type NegotiationComplete = backend.NegotiationComplete
 
-// InterfaceUp identifies the PPP link reported by openfortivpn, not a verified OS link.
-type InterfaceUp struct {
-	eventTag
-	Name string
-}
+// InterfaceUp identifies the reported PPP link, not a verified OS link.
+type InterfaceUp = backend.InterfaceUp
 
-// TunnelUp indicates a running tunnel; helper networking still needs to be applied.
-type TunnelUp struct{ eventTag }
+// TunnelUp indicates a running tunnel before helper networking is applied.
+type TunnelUp = backend.TunnelUp
 
-// CertRejected collects a rejected certificate's displayed metadata and final SHA256.
-// Digest is empty for incomplete or malformed blocks; such values cannot be trusted.
-type CertRejected struct {
-	eventTag
-	Digest  string
-	Subject string
-	Issuer  string
-}
+// CertRejected contains displayed rejected certificate metadata and its leaf digest.
+type CertRejected = backend.CertificateRejected
 
-// PPPFailure contains a ppp or pppd error line's message, without its logging prefix.
-type PPPFailure struct {
-	eventTag
-	Message string
-}
+// CertificateRejected is the backend-neutral spelling of the certificate observation.
+type CertificateRejected = backend.CertificateRejected
 
-// LoggedOut indicates a successful explicit logout from the gateway.
-type LoggedOut struct{ eventTag }
+// RouteRejected contains a typed pushed-route collision or installation failure.
+type RouteRejected = backend.RouteRejected
 
-// Teardown contains a connection closure or PPP termination milestone.
-// It does not prove the child exited or owned network resources were removed.
-type Teardown struct {
-	eventTag
-	Message string
-}
+// RouteRejectReason identifies a typed route failure without interpreting diagnostics.
+type RouteRejectReason = backend.RouteRejectReason
 
-// Unknown preserves an unrecognized original line for separate diagnostic handling.
-// Consumers must redact diagnostics before storing or exposing them to clients.
-type Unknown struct {
-	eventTag
-	Line string
-}
+// Route rejection reasons are identical across native and external backend adapters.
+const (
+	RouteConflict = backend.RouteConflict
+	RouteFailed   = backend.RouteFailed
+)
+
+// PPPFailure contains a PPP error message without its logging prefix.
+type PPPFailure = backend.PPPFailure
+
+// LoggedOut indicates successful explicit gateway logout.
+type LoggedOut = backend.LoggedOut
+
+// Teardown contains closure metadata without proving child exit or resource cleanup.
+type Teardown = backend.Teardown
+
+// Unknown preserves unrecognized text for separate redacted diagnostic handling.
+type Unknown = backend.Unknown

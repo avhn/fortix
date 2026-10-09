@@ -18,7 +18,7 @@ type Profile struct {
 	SchemaVersion int     `json:"schema_version"`
 	ID            string  `json:"id"`
 	Name          string  `json:"name"`
-	Backend       string  `json:"backend"`
+	Backend       string  `json:"backend,omitempty"`
 	Gateway       Gateway `json:"gateway"`
 	Realm         string  `json:"realm,omitempty"`
 	Username      string  `json:"username"`
@@ -81,8 +81,9 @@ var (
 // It does not normalize input or access storage and never returns an error.
 func ValidID(id string) bool { return idPattern.MatchString(id) }
 
-// ApplyDefaults fills omitted port, MFA, routing, and DNS settings in place.
-// It preserves explicit false and TOTP values and never fails.
+// ApplyDefaults fills omitted backend, port, MFA, routing, and DNS settings in place.
+// Password-only profiles resolve to native; second-factor modes resolve to openfortivpn.
+// It preserves explicit backend choices, false, and TOTP values and never fails.
 func (p *Profile) ApplyDefaults() {
 	if p == nil {
 		return
@@ -92,6 +93,12 @@ func (p *Profile) ApplyDefaults() {
 	}
 	if p.MFA.Mode == "" {
 		p.MFA.Mode = "none"
+	}
+	if p.Backend == "" {
+		p.Backend = "openfortivpn"
+		if p.MFA.Mode == "none" {
+			p.Backend = "native"
+		}
 	}
 	if p.MFA.Mode == "totp" {
 		if p.MFA.Digits == nil {
@@ -135,8 +142,11 @@ func (p *Profile) Validate() error {
 	if !validText(p.Name, 1, 64) {
 		add("name", "must be 1..64 characters with no control characters")
 	}
-	if p.Backend != "openfortivpn" {
-		add("backend", "must be openfortivpn")
+	if p.Backend != "" && p.Backend != "native" && p.Backend != "openfortivpn" {
+		add("backend", "must be native or openfortivpn")
+	}
+	if p.Backend == "native" && p.MFA.Mode != "none" {
+		add("backend", "native requires mfa.mode none; use openfortivpn for second factors")
 	}
 	if addr, err := netip.ParseAddr(p.Gateway.Host); err != nil || addr.Zone() != "" {
 		if !validDNSName(p.Gateway.Host) {

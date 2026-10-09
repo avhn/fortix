@@ -1,0 +1,16 @@
+{"type":"result","id":"hello-1","ok":true,"data":{"helper_version":"0.2.0","protocol":1}}
+{"type":"result","id":"subscribe-1","ok":true}
+{"type":"result","id":"list-1","ok":true,"data":[{"profile":"work","state":"connected"}]}
+{"type":"result","id":"get-1","ok":true,"data":{"schema_version":1,"id":"work","name":"Work \u003c\u0026\u003e 東京","gateway":{"host":"vpn.example.com","port":443},"username":"jane.doe","mfa":{"mode":"none"},"routes":{"mode":"gateway","preserve_lan":true},"dns":{"mode":"none"},"backend":"native"}}
+{"type":"result","id":"up-1","ok":true,"data":{"attempt":1}}
+{"type":"result","id":"down-all","ok":true}
+{"type":"result","id":"status-1","ok":true,"data":[{"wanted":true,"initiated":true,"cleanup_pending":false,"profile":"work","state":"connected","detail":"connected","attempt":1,"interface":"utun7","local_ip":"10.20.0.10","since":"2026-01-02T03:04:05Z"}]}
+{"type":"result","id":"status-empty","ok":true,"data":[]}
+{"type":"result","id":"logs-1","ok":true,"data":["INFO: connected","sanitized \u003c\u0026\u003e 東京"]}
+{"type":"result","id":"error-unauthorized","ok":false,"error":{"code":"UNAUTHORIZED","message":"Synthetic operation failure"}}
+{"type":"result","id":"error-not_found","ok":false,"error":{"code":"NOT_FOUND","message":"Synthetic operation failure"}}
+{"type":"result","id":"error-invalid","ok":false,"error":{"code":"INVALID","message":"Synthetic operation failure"}}
+{"type":"result","id":"error-conflict","ok":false,"error":{"code":"CONFLICT","message":"Synthetic operation failure"}}
+{"type":"result","id":"error-busy","ok":false,"error":{"code":"BUSY","message":"Synthetic operation failure"}}
+{"type":"result","id":"error-internal","ok":false,"error":{"code":"INTERNAL","message":"Synthetic operation failure"}}
+{"type":"result","id":"error-interface_mismatch","ok":false,"error":{"code":"INTERFACE_MISMATCH","message":"Synthetic operation failure"}}

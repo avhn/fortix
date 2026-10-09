@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/avhn/fortix/internal/openfortivpn"
+	"github.com/avhn/fortix/internal/backend"
 )
 
 // maxCleanupRetries bounds automatic retries after failed or stalled resource removal.
@@ -105,7 +105,8 @@ func Next(s State, e Event) (State, []Effect) {
 	return s, nil
 }
 
-// beginAttempt increments generation, clears attempt metadata, and requests a child.
+// beginAttempt increments generation, clears attempt metadata, and requests transport.
+// Native attempts have no child identity; external adapters retain the process effects.
 // Existing timers are cancelled under their old generation before the new timer starts.
 // Generation exhaustion fails safely instead of making old replies valid again.
 func beginAttempt(s State) (State, []Effect) {
@@ -124,7 +125,8 @@ func beginAttempt(s State) (State, []Effect) {
 	s.CleanupRetries, s.CleanupRetryPending = 0, false
 	s.Target, s.Failure, s.RetryDelay = "", "", 0
 	s.LocalIP, s.DNS, s.Suffix, s.Interface = netip.Addr{}, nil, "", ""
-	s.Certificate = openfortivpn.CertRejected{}
+	s.Link, s.PeerIP, s.PushedPrefixes, s.MTU = backend.LinkIdentity{}, netip.Addr{}, nil, 0
+	s.Certificate = backend.CertificateRejected{}
 	next, entered := transition(s, Starting, "starting", s.Deadlines.Connect)
 	effects = append(effects, entered...)
 	return next, append(effects, effect(next, StartProcess))
@@ -186,14 +188,19 @@ func authDeadline(s State) time.Duration {
 
 // challenge enters password or code waiting from a valid authentication phase.
 // Invalid kinds are ignored. Identical repeated requests cannot reset a live deadline.
-func challenge(s State, request openfortivpn.Request) (State, []Effect) {
+// Native code requests fail with an actionable message rather than switching backend.
+func challenge(s State, request backend.Request) (State, []Effect) {
+	if s.Backend == "native" && request.Kind == backend.Code && active(s.Phase) {
+		s.Failure = AuthFailure
+		return beginStop(s, Failed, "native backend does not support second factors; select openfortivpn")
+	}
 	if s.Phase != Starting && s.Phase != Authenticating && s.Phase != WaitingPassword && s.Phase != WaitingCode {
 		return s, nil
 	}
 	phase := WaitingPassword
-	if request.Kind == openfortivpn.Code {
+	if request.Kind == backend.Code {
 		phase = WaitingCode
-	} else if request.Kind != openfortivpn.Password {
+	} else if request.Kind != backend.Password {
 		return s, nil
 	}
 	if s.Phase == WaitingPassword || s.Phase == WaitingCode {
@@ -205,10 +212,15 @@ func challenge(s State, request openfortivpn.Request) (State, []Effect) {
 	return next, append(effects, prompt)
 }
 
-// output applies known stdout observations and ignores diagnostic text.
-// Fatal authentication or certificate observations can override a pending reconnect,
-// but no output can resume a child while cleanup is underway.
+// output applies shared typed observations and ignores diagnostic text.
+// Fatal authentication, certificate, or route observations can override a pending
+// reconnect, but no output can resume transport while cleanup is underway.
+// Outcomes acknowledge worker completion even when native has no external child.
 func output(s State, e Event) (State, []Effect) {
+	if observed, ok := e.Observation.(backend.Outcome); ok {
+		e.ExitCode, e.Failure, e.Detail = observed.ExitCode, observed.Failure, observed.Detail
+		return processExited(s, e)
+	}
 	if s.Phase == Stopping || s.Phase == Backoff || s.Phase == WaitingTrust {
 		if s.Phase == Stopping && s.CleanupRetries > 0 {
 			// Buffered diagnostics cannot hide leaked resources or enable trust/reconnect.
@@ -217,15 +229,23 @@ func output(s State, e Event) (State, []Effect) {
 		// Buffered fatal output must suppress retry and replace an older trust digest.
 		target, reason, detail := Phase(""), Failure(""), ""
 		switch observed := e.Observation.(type) {
-		case openfortivpn.AuthFailed:
+		case backend.AuthFailed:
 			target, reason, detail = Failed, AuthFailure, "authentication rejected"
-		case openfortivpn.TunnelModeDenied:
+		case backend.TunnelModeDenied:
 			target, reason, detail = Failed, TunnelFailure, "tunnel mode denied"
-		case openfortivpn.PPPFailure:
+		case backend.RouteRejected:
+			target, reason, detail = Failed, routeFailure(observed), "pushed route rejected"
+		case backend.OutputFailed:
+			target, reason, detail = Failed, NetworkFailure, "helper log or output stream failed"
+		case backend.CredentialRequested:
+			if s.Backend == "native" && observed.Request.Kind == backend.Code {
+				target, reason, detail = Failed, AuthFailure, "native backend does not support second factors; select openfortivpn"
+			}
+		case backend.PPPFailure:
 			if pppAuthenticationFailure(observed.Message) {
 				target, reason, detail = Failed, AuthFailure, "authentication rejected"
 			}
-		case openfortivpn.CertRejected:
+		case backend.CertRejected:
 			if s.Wanted {
 				s.Certificate = observed
 				target, reason, detail = trustTarget(observed), CertFailure, "certificate rejected"
@@ -252,40 +272,63 @@ func output(s State, e Event) (State, []Effect) {
 		return s, nil
 	}
 	switch observed := e.Observation.(type) {
-	case openfortivpn.ConnectedToGateway:
+	case backend.ConnectedToGateway:
 		if s.Phase == Starting {
 			return transition(s, Authenticating, "authenticating", authDeadline(s))
 		}
-	case openfortivpn.Authenticated:
+	case backend.Authenticated:
 		if s.Phase == Starting || s.Phase == Authenticating {
 			return transition(s, Negotiating, "negotiating", s.Deadlines.Negotiate)
 		}
-	case openfortivpn.AuthFailed:
+	case backend.AuthFailed:
 		return fail(s, AuthFailure, e.Jitter)
-	case openfortivpn.TunnelModeDenied:
+	case backend.TunnelModeDenied:
 		return fail(s, TunnelFailure, e.Jitter)
-	case openfortivpn.CertRejected:
+	case backend.CertificateRejected:
 		s.Certificate, s.Failure = observed, CertFailure
 		return beginStop(s, trustTarget(observed), "certificate rejected")
-	case openfortivpn.GotAddresses:
+	case backend.RouteRejected:
+		s.Failure = routeFailure(observed)
+		return beginStop(s, Failed, "pushed route rejected")
+	case backend.OutputFailed:
+		s.Failure = NetworkFailure
+		return beginStop(s, Failed, "helper log or output stream failed")
+	case backend.CredentialRequested:
+		return challenge(s, observed.Request)
+	case backend.Negotiated:
 		if s.Phase == Negotiating {
+			s.LocalIP, s.PeerIP, s.MTU = observed.LocalIP, observed.PeerIP, observed.MTU
+			s.DNS, s.Suffix = append([]netip.Addr(nil), observed.DNS...), observed.Suffix
+			s.PushedPrefixes = append([]netip.Prefix(nil), observed.PushedPrefixes...)
+		}
+	case backend.LinkReady:
+		if s.Phase == Negotiating && s.Interface == "" {
+			if s.Backend == "native" && (observed.Link.PID != 0 || observed.Link.StartTime != "") {
+				return fail(s, InterfaceFailure, e.Jitter)
+			}
+			s.Link, s.Interface = observed.Link, observed.Link.Interface
+		}
+	case backend.GotAddresses:
+		if s.Phase == Negotiating && s.Backend != "native" {
 			s.LocalIP, s.DNS, s.Suffix = observed.LocalIP, append([]netip.Addr(nil), observed.DNS...), observed.Suffix
 		}
-	case openfortivpn.InterfaceUp:
-		if s.Phase == Negotiating && s.Interface == "" {
+	case backend.InterfaceUp:
+		if s.Phase == Negotiating && s.Interface == "" && s.Backend != "native" {
 			s.Interface = observed.Name
 		}
-	case openfortivpn.TunnelUp:
+	case backend.TunnelUp:
 		if s.Phase == Negotiating {
-			if !s.LocalIP.IsValid() || s.Interface == "" {
+			if !s.LocalIP.IsValid() || s.Interface == "" || (s.Backend == "native" && !nativeMetadataValid(s)) {
 				return fail(s, NetworkFailure, e.Jitter)
 			}
 			next, effects := transition(s, Configuring, "configuring network", s.Deadlines.Network)
 			apply := effect(next, ApplyNetwork)
 			apply.LocalIP, apply.DNS, apply.Suffix, apply.Interface = s.LocalIP, append([]netip.Addr(nil), s.DNS...), s.Suffix, s.Interface
+			apply.Link, apply.PeerIP, apply.MTU = s.Link, s.PeerIP, s.MTU
+			apply.PushedPrefixes = append([]netip.Prefix(nil), s.PushedPrefixes...)
 			return next, append(effects, apply)
 		}
-	case openfortivpn.PPPFailure:
+	case backend.PPPFailure:
 		if pppAuthenticationFailure(observed.Message) {
 			return fail(s, AuthFailure, e.Jitter)
 		}
@@ -293,13 +336,42 @@ func output(s State, e Event) (State, []Effect) {
 			return fail(s, TransportFailure, e.Jitter)
 		}
 		return fail(s, ProcessFailure, e.Jitter)
-	case openfortivpn.Teardown, openfortivpn.LoggedOut:
+	case backend.Teardown, backend.LoggedOut:
 		if s.Phase == Connected {
 			return fail(s, TransportFailure, e.Jitter)
 		}
 		return fail(s, ProcessFailure, e.Jitter)
 	}
 	return s, nil
+}
+
+// nativeMetadataValid requires a registered child-free link and usable IPv4 metadata.
+// It rejects malformed negotiation before network effects; native IPv6 is unsupported.
+func nativeMetadataValid(s State) bool {
+	if s.Link.Interface != s.Interface || s.Link.PID != 0 || s.Link.StartTime != "" ||
+		!s.LocalIP.Is4() || s.LocalIP.IsUnspecified() || !s.PeerIP.Is4() || s.PeerIP.IsUnspecified() || s.MTU < 128 || s.MTU > 65535 {
+		return false
+	}
+	for _, prefix := range s.PushedPrefixes {
+		if !prefix.IsValid() || !prefix.Addr().Is4() || prefix != prefix.Masked() {
+			return false
+		}
+	}
+	for _, server := range s.DNS {
+		if !server.Is4() || server.IsUnspecified() {
+			return false
+		}
+	}
+	return true
+}
+
+// routeFailure selects a stable failure from typed reason, never diagnostic text.
+// Unknown route reasons remain non-retrying network failures.
+func routeFailure(observed backend.RouteRejected) Failure {
+	if observed.Reason == backend.RouteConflict {
+		return ConflictFailure
+	}
+	return NetworkFailure
 }
 
 // pppAuthenticationFailure identifies PPP credential rejection without guessing which
@@ -310,7 +382,7 @@ func pppAuthenticationFailure(message string) bool {
 
 // trustTarget selects a human confirmation only for a complete, normalized digest.
 // Incomplete certificate blocks remain failures; command suggestions cannot grant trust.
-func trustTarget(cert openfortivpn.CertRejected) Phase {
+func trustTarget(cert backend.CertRejected) Phase {
 	if len(cert.Digest) != 64 {
 		return Failed
 	}
@@ -345,9 +417,10 @@ func fail(s State, reason Failure, jitter float64) (State, []Effect) {
 	return beginStop(s, target, detail)
 }
 
-// beginStop requests cancellation and SIGTERM, then waits for exit before cleanup.
-// If the child already exited, cleanup starts directly. Networking is never removed
-// while a live child might recreate it, and another generation cannot start early.
+// beginStop requests cancellation and transport stop, then waits for exit before cleanup.
+// External adapters send SIGTERM; native adapters stop workers without signalling a PID.
+// If transport already exited, cleanup starts directly. Another generation cannot start
+// while workers or children might recreate network resources.
 func beginStop(s State, target Phase, detail string) (State, []Effect) {
 	s.Target, s.PendingUp = target, false
 	duration := s.Deadlines.Stop
@@ -365,20 +438,29 @@ func beginStop(s State, target Phase, detail string) (State, []Effect) {
 	return next, effects
 }
 
-// processExited records child exit, even status zero before TunnelUp, and starts cleanup.
-// Duplicate or idle exits are ignored. Connected exits are transport failures, while
-// early exits are terminal process failures rather than false successful connections.
+// processExited records worker completion or child exit and starts cleanup.
+// Duplicate or idle exits are ignored. Typed outcomes preserve their terminal cause;
+// otherwise connected exits are transport failures and early exits are process failures.
+// A zero exit code before TunnelUp cannot produce a successful connection.
 func processExited(s State, e Event) (State, []Effect) {
 	if s.Exited || (!active(s.Phase) && s.Phase != Stopping) {
 		return s, nil
 	}
 	s.Exited = true
 	if s.Phase != Stopping {
-		reason := ProcessFailure
-		if s.Phase == Connected {
-			reason = TransportFailure
+		reason := e.Failure
+		if reason == "" {
+			reason = ProcessFailure
+			if s.Phase == Connected {
+				reason = TransportFailure
+			}
 		}
 		return fail(s, reason, e.Jitter)
+	}
+	if e.Failure != "" && e.Failure != TransportFailure && e.Failure != s.Failure && s.CleanupRetries == 0 {
+		// A fatal terminal outcome must suppress a previously selected reconnect.
+		s.Failure, s.Target, s.PendingUp = e.Failure, Failed, false
+		s.Detail = string(e.Failure) + " failure"
 	}
 	s.CleanupStarted = true
 	next, effects := transition(s, Stopping, s.Detail, s.Deadlines.Network)
@@ -428,7 +510,8 @@ func finishStop(s State) (State, []Effect) {
 }
 
 // deadline accepts only the active timer and handles retry, stop escalation, or failure.
-// Stop timeouts re-arm verified kill requests until exit is acknowledged. Cleanup
+// Stop timeouts re-arm verified kill requests for external children or idempotent
+// stop requests for native workers until exit is acknowledged. Cleanup
 // timeouts retry removal with a bounded budget. Authentication/human timeouts never retry.
 func deadline(s State, e Event) (State, []Effect) {
 	if !s.TimerActive || e.TimerID != s.TimerID {
@@ -443,7 +526,11 @@ func deadline(s State, e Event) (State, []Effect) {
 	case Stopping:
 		if !s.Exited {
 			next, effects := transition(s, Stopping, s.Detail, s.Deadlines.Stop)
-			return next, append(effects, effect(next, KillProcess))
+			stop := KillProcess
+			if s.Backend == "native" {
+				stop = StopProcess
+			}
+			return next, append(effects, effect(next, stop))
 		}
 		if s.CleanupStarted && !s.Cleaned {
 			if !s.CleanupRetryPending {

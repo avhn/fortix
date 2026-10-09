@@ -1,0 +1,386 @@
+[
+  {
+    "name": "empty",
+    "profiles": [],
+    "reachable": true,
+    "status": "NotConnected"
+  },
+  {
+    "name": "idle",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "disconnected",
+        "wanted": false,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "NotConnected"
+  },
+  {
+    "name": "connected",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connected"
+  },
+  {
+    "name": "all-wanted-connected",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      },
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connected"
+  },
+  {
+    "name": "unwanted-idle-does-not-dilute",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      },
+      {
+        "id": "work",
+        "state": "disconnected",
+        "wanted": false,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connected"
+  },
+  {
+    "name": "connected-beats-unwanted-attention",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      },
+      {
+        "id": "work",
+        "state": "failed",
+        "wanted": false,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connected"
+  },
+  {
+    "name": "partial-beats-attention",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      },
+      {
+        "id": "work",
+        "state": "failed",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Partial"
+  },
+  {
+    "name": "partial-beats-progress",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      },
+      {
+        "id": "work",
+        "state": "starting",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Partial"
+  },
+  {
+    "name": "partial-with-wanted-idle",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      },
+      {
+        "id": "work",
+        "state": "disconnected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Partial"
+  },
+  {
+    "name": "attention-beats-progress",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "failed",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      },
+      {
+        "id": "work",
+        "state": "starting",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Attention"
+  },
+  {
+    "name": "trust-needs-attention",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "waiting_trust",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Attention"
+  },
+  {
+    "name": "human-password-needs-attention",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "waiting_password",
+        "wanted": true,
+        "pending_password": true,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Attention"
+  },
+  {
+    "name": "automatic-password-progress",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "waiting_password",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connecting"
+  },
+  {
+    "name": "cleanup-needs-attention",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "failed",
+        "wanted": false,
+        "pending_password": false,
+        "cleanup_pending": true
+      }
+    ],
+    "reachable": true,
+    "status": "Attention"
+  },
+  {
+    "name": "unwanted-connected-not-wanted-success",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": false,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "NotConnected"
+  },
+  {
+    "name": "stale-connected",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "connected",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": false,
+    "status": "NotConnected"
+  },
+  {
+    "name": "stale-attention",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "failed",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      },
+      {
+        "id": "work",
+        "state": "waiting_trust",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": false,
+    "status": "NotConnected"
+  },
+  {
+    "name": "progress-starting",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "starting",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connecting"
+  },
+  {
+    "name": "progress-waiting_code",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "waiting_code",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connecting"
+  },
+  {
+    "name": "progress-authenticating",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "authenticating",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connecting"
+  },
+  {
+    "name": "progress-negotiating",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "negotiating",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connecting"
+  },
+  {
+    "name": "progress-configuring",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "configuring",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connecting"
+  },
+  {
+    "name": "progress-backoff",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "backoff",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connecting"
+  },
+  {
+    "name": "progress-stopping",
+    "profiles": [
+      {
+        "id": "work",
+        "state": "stopping",
+        "wanted": true,
+        "pending_password": false,
+        "cleanup_pending": false
+      }
+    ],
+    "reachable": true,
+    "status": "Connecting"
+  }
+]
