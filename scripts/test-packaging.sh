@@ -113,11 +113,11 @@ HASH="$(awk '$2 == "fortix_0.2.0_darwin_arm64.dmg" { print $1 }' "${STAGING}/com
 grep -Fq 'https://github.com/avhn/fortix/releases/download/v0.2.0/fortix_0.2.0_darwin_arm64.dmg' "${STAGING}/rendered tap/Casks/fortix.rb"
 grep -Fq "sha256 \"${HASH}\"" "${STAGING}/rendered tap/Casks/fortix.rb"
 grep -Fq 'bin.install "fortix", "fortix-helper"' "${STAGING}/rendered tap/Formula/fortix.rb"
-grep -Fq 'sudo fortix-helper install' "${STAGING}/rendered tap/Formula/fortix.rb"
+grep -Fq 'sudo "#{opt_bin}/fortix-helper" install' "${STAGING}/rendered tap/Formula/fortix.rb"
 grep -Fq 'brew install openfortivpn' "${STAGING}/rendered tap/Formula/fortix.rb"
 grep -Fq 'system "#{bin}/fortix", "version"' "${STAGING}/rendered tap/Formula/fortix.rb"
 grep -Fq 'depends_on arch: :arm64' "${STAGING}/rendered tap/Casks/fortix.rb"
-grep -Fq 'depends_on macos: ">= :ventura"' "${STAGING}/rendered tap/Casks/fortix.rb"
+grep -Fq 'depends_on macos: :ventura' "${STAGING}/rendered tap/Casks/fortix.rb"
 grep -Fq 'not notarized' "${STAGING}/rendered tap/Casks/fortix.rb"
 grep -Fq 'xattr -dr com.apple.quarantine /Applications/Fortix.app' "${STAGING}/rendered tap/Casks/fortix.rb"
 [[ "$(grep '^[[:space:]]*zap ' "${STAGING}/rendered tap/Casks/fortix.rb")" == '  zap trash: "~/Library/Preferences/com.github.avhn.fortix.plist"' ]]

@@ -35,7 +35,7 @@ class Fortix < Formula
   # Privileged installation is explicit; native gateways need no optional backend.
   def caveats
     <<~EOS
-      Run sudo fortix-helper install once to install the privileged helper.
+      Run sudo "#{opt_bin}/fortix-helper" install once to install the privileged helper.
       openfortivpn is optional, only for second-factor gateways:
         brew install openfortivpn
     EOS

@@ -9,7 +9,7 @@ cask "fortix" do
   homepage "https://github.com/avhn/fortix"
 
   depends_on arch: :arm64
-  depends_on macos: ">= :ventura"
+  depends_on macos: :ventura
 
   app "Fortix.app"
 
