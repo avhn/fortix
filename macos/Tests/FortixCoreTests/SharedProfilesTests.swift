@@ -62,6 +62,26 @@ final class SharedProfilesTests: XCTestCase {
     }
   }
 
+  /// TestExcludeRoundTrip carries excluded ranges and applies the helper's mode and backend rules.
+  func testExcludeRoundTrip() throws {
+    var original = Self.example
+    original.routes = .init(mode: "gateway", exclude: ["198.51.100.0/24"], preserveLAN: true)
+    let data = try SharedProfiles.export([original])
+    XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("\"exclude\""))
+    var completed = try SharedProfiles.parse(data)[0].apply(to: SharedProfiles.zeroProfile)
+    completed.username = original.username
+    XCTAssertEqual(completed, original)
+    var custom = Self.example
+    custom.routes.exclude = ["198.51.100.0/24"]
+    XCTAssertTrue(ProfileRules.problems(custom).contains { $0.field == "routes.exclude" })
+    var legacy = original
+    legacy.backend = "openfortivpn"
+    XCTAssertTrue(ProfileRules.problems(legacy).contains { $0.field == "routes.exclude" })
+    var overlap = original
+    overlap.routes.exclude = ["198.51.0.0/16", "198.51.100.0/24"]
+    XCTAssertTrue(ProfileRules.problems(overlap).contains { $0.field == "routes.exclude[1]" })
+  }
+
   /// TestExportIsCanonical normalizes wildcard domains, prefixes, and pins in the written copy.
   func testExportIsCanonical() throws {
     var original = Self.example

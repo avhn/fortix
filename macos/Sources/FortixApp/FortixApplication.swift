@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import FortixCore
 import SwiftUI
+import UserNotifications
 
 /// FortixApplication keeps only the app menu commands in SwiftUI. The status item and the
 /// management window are owned by AppKit through the delegate, so no SwiftUI update can
@@ -40,8 +41,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
     let controller = StatusController(model: model)
     status = controller
+    model.onFailure = { [weak self] id, detail in self?.notifyFailure(id, detail: detail) }
     model.start()
     if !UserDefaults.standard.bool(forKey: "setupCompleted") { controller.showWindow() }
+  }
+
+  /// NotifyFailure posts one macOS notification for a failed connection attempt with the
+  /// helper's reason. Notifications need a bundled app, so test and command line runs skip it.
+  private func notifyFailure(_ id: String, detail: String) {
+    guard Bundle.main.bundleURL.pathExtension == "app" else { return }
+    let name = model.profiles.first { $0.id == id }?.name ?? id
+    let content = UNMutableNotificationContent()
+    content.title = "\(name) could not connect"
+    content.body = detail.isEmpty ? "Open Fortix to see the log." : detail
+    let request = UNNotificationRequest(identifier: "failure-\(id)", content: content, trigger: nil)
+    Task {
+      let center = UNUserNotificationCenter.current()
+      guard (try? await center.requestAuthorization(options: [.alert])) == true else { return }
+      try? await center.add(request)
+    }
   }
 
   /// DisconnectAllAndQuit stops every tunnel before terminating, when the helper is reachable.
@@ -162,6 +180,14 @@ final class StatusController: NSObject, NSMenuDelegate, NSWindowDelegate {
       })
       entry.submenu = submenu
       menu.addItem(entry)
+      // A failure reason sits under its profile in gray, so a refusal explains itself.
+      if let state, ["failed", "backoff"].contains(state.state), !state.detail.isEmpty {
+        for line in Self.wrap(state.detail) {
+          let reason = disabled(line)
+          reason.indentationLevel = 1
+          menu.addItem(reason)
+        }
+      }
     }
     menu.addItem(action("Connect all", enabled: idle && !model.profiles.isEmpty) { model in
       model.perform { try await model.connectAll() }
@@ -183,6 +209,21 @@ final class StatusController: NSObject, NSMenuDelegate, NSWindowDelegate {
         NSApplication.shared.terminate(nil)
       }
     })
+  }
+
+  /// Wrap splits a reason into lines short enough to keep the menu narrow.
+  static func wrap(_ text: String, width: Int = 56) -> [String] {
+    var lines: [String] = []
+    var line = ""
+    for word in text.split(separator: " ") {
+      if !line.isEmpty && line.count + 1 + word.count > width {
+        lines.append(line)
+        line = ""
+      }
+      line += line.isEmpty ? String(word) : " " + word
+    }
+    if !line.isEmpty { lines.append(line) }
+    return lines
   }
 
   /// Disabled returns a non-interactive informational menu row.

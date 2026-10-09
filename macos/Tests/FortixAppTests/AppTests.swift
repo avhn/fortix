@@ -143,6 +143,48 @@ final class AppTests: XCTestCase {
     XCTAssertThrowsError(try draft.value())
   }
 
+  /// TestDraftExcludedRoutes saves excluded ranges for gateway mode and drops them for custom.
+  func testDraftExcludedRoutes() throws {
+    var profile = Fixture.profile
+    profile.backend = "native"
+    profile.mfa = .init(mode: "none")
+    profile.routes = .init(mode: "gateway")
+    var draft = ProfileDraft(profile: profile)
+    draft.excludeRows = [.init(text: " 198.51.100.0/24 "), .init(text: "")]
+    XCTAssertEqual(try draft.value().routes.exclude, ["198.51.100.0/24"])
+    draft.excludeRows = [.init(text: "198.51.100.1/24")]
+    XCTAssertFalse(draft.excludeProblems.isEmpty)
+    XCTAssertThrowsError(try draft.value())
+    draft.excludeRows = [.init(text: "")]
+    XCTAssertNil(try draft.value().routes.exclude)
+    draft.excludeRows = [.init(text: "198.51.100.0/24")]
+    draft.profile.routes.mode = "custom"
+    draft.routeRows = [.init(text: "192.0.2.0/24")]
+    XCTAssertNil(try draft.value().routes.exclude)
+  }
+
+  /// TestFailureReportedOnce reports a failed attempt once and wraps its reason for the menu.
+  @MainActor func testFailureReportedOnce() async throws {
+    let model = AppModel(
+      client: HelperClient(connector: { _ in AppTransport() }),
+      keychain: KeychainStore(provider: MemoryKeychain()))
+    var reports: [String] = []
+    model.onFailure = { id, detail in reports.append("\(id) \(detail)") }
+    let failed = try Fixture.event([
+      "type": "state", "profile": "work", "attempt": 2, "state": "failed",
+      "detail": "Other is already using 192.0.2.0/24. Disconnect Other to connect Work.",
+      "wanted": false, "initiated": true, "cleanup_pending": false,
+    ])
+    await model.receive(failed)
+    await model.receive(failed)
+    await model.receive(try Fixture.state("connecting", attempt: 3))
+    XCTAssertEqual(reports, ["work Other is already using 192.0.2.0/24. Disconnect Other to connect Work."])
+    XCTAssertEqual(model.states["work"]?.state, "connecting")
+    let lines = StatusController.wrap("Other is already using 192.0.2.0/24. Disconnect Other to connect Work.", width: 30)
+    XCTAssertEqual(lines, ["Other is already using", "192.0.2.0/24. Disconnect Other", "to connect Work."])
+    XCTAssertTrue(lines.allSatisfy { $0.count <= 30 })
+  }
+
   /// TestHandshakeAndQuit verifies connecting or closing the app never starts or stops a tunnel.
   @MainActor func testHandshakeAndQuit() async throws {
     let transport = AppTransport()

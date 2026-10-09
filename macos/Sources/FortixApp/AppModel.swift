@@ -67,6 +67,11 @@ final class AppModel: ObservableObject {
   private var candidates: [String: SavedPassword] = [:]
   /// LookingUp distinguishes automatic secure-store access from a human password prompt.
   @Published private var lookingUp: Set<String> = []
+  /// OnFailure is told once per failed attempt, with the profile ID and the helper's reason,
+  /// so the app can notify the user. Snapshots loaded at launch never trigger it.
+  var onFailure: ((String, String) -> Void)?
+  /// ReportedFailures remembers which profile attempts were already reported.
+  private var reportedFailures: Set<String> = []
 
   /// SaveError reports app-side safeguards before any helper-owned configuration is changed.
   enum SaveError: Error, Equatable {
@@ -194,6 +199,11 @@ final class AppModel: ObservableObject {
       states[event.profile] = ProfilePresentation(
         attempt: event.attempt, state: event.state ?? "unknown", detail: event.detail ?? "",
         wanted: event.wanted ?? false, cleanupPending: event.cleanupPending ?? false)
+      if event.state == "failed",
+        reportedFailures.insert("\(event.profile):\(event.attempt)").inserted
+      {
+        onFailure?(event.profile, event.detail ?? "")
+      }
       prompts.removeAll {
         $0.event.profile == event.profile
           && ($0.event.attempt != event.attempt

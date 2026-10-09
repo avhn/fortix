@@ -17,6 +17,8 @@ struct ProfileDraft {
   var port: String
   /// RouteRows holds requested IPv4 prefixes, one per row.
   var routeRows: [EntryRow]
+  /// ExcludeRows holds ranges removed from gateway-pushed routes, one per row.
+  var excludeRows: [EntryRow]
   /// DomainRows holds explicitly scoped split DNS domains, one per row.
   var domainRows: [EntryRow]
 
@@ -25,6 +27,7 @@ struct ProfileDraft {
     self.profile = profile
     port = String(profile.gateway.resolvedPort)
     routeRows = Self.rows(profile.routes.include)
+    excludeRows = Self.rows(profile.routes.exclude)
     domainRows = Self.rows(profile.dns.domains)
   }
 
@@ -57,6 +60,14 @@ struct ProfileDraft {
     }
   }
 
+  /// ExcludeEntries lists trimmed, non-empty excluded prefixes with their source rows.
+  var excludeEntries: [(row: UUID, value: String)] {
+    excludeRows.compactMap { row in
+      let value = row.text.trimmingCharacters(in: .whitespacesAndNewlines)
+      return value.isEmpty ? nil : (row.id, value)
+    }
+  }
+
   /// DomainEntries lists trimmed, non-empty domains with one leading wildcard label removed.
   var domainEntries: [(row: UUID, value: String)] {
     domainRows.compactMap { row in
@@ -71,6 +82,19 @@ struct ProfileDraft {
     let entries = routeEntries
     return Self.rowProblems(
       ProfileRules.routeProblems(entries.map(\.value)), rows: entries.map(\.row))
+  }
+
+  /// ExcludeProblems maps each invalid excluded-range row to its first validation message.
+  var excludeProblems: [UUID: String] {
+    guard profile.routes.mode != "custom" else { return [:] }
+    let entries = excludeEntries
+    return Self.rowProblems(
+      ProfileRules.routeProblems(entries.map(\.value)), rows: entries.map(\.row))
+  }
+
+  /// ExcludeCountInvalid reports more excluded ranges than the helper accepts.
+  var excludeCountInvalid: Bool {
+    profile.routes.mode != "custom" && excludeEntries.count > ProfileRules.maxExclude
   }
 
   /// DomainProblems maps each invalid split DNS row to its first validation message.
@@ -91,7 +115,8 @@ struct ProfileDraft {
 
   /// HasListProblems blocks saving while any route or domain row is invalid or a list is empty.
   var hasListProblems: Bool {
-    routesEmpty || domainCountInvalid || !routeProblems.isEmpty || !domainProblems.isEmpty
+    routesEmpty || domainCountInvalid || excludeCountInvalid || !routeProblems.isEmpty
+      || !excludeProblems.isEmpty || !domainProblems.isEmpty
   }
 
   /// Value validates port text, lists, and backend compatibility before the helper's full validation.
@@ -103,6 +128,8 @@ struct ProfileDraft {
     result.gateway.port = parsedPort
     // Switching policy modes omits fields that the helper forbids in the newly selected mode.
     result.routes.include = result.routes.mode == "custom" ? routeEntries.map(\.value) : nil
+    let excluded = excludeEntries.map(\.value)
+    result.routes.exclude = result.routes.mode == "custom" || excluded.isEmpty ? nil : excluded
     result.dns.domains = result.dns.mode == "split" ? domainEntries.map(\.value) : nil
     if result.mfa.mode != "totp" {
       result.mfa.digits = nil
@@ -290,6 +317,18 @@ struct ProfileEditor: View {
               problems: draft.routeProblems,
               listProblem: draft.routesEmpty
                 ? listNote("routes.include", fallback: "Add at least one IPv4 prefix.") : nil)
+          }
+          if draft.profile.routes.mode != "custom" {
+            Text("Excluded routes")
+            EntryListEditor(
+              title: "Excluded route", placeholder: "192.0.2.0/24", rows: $draft.excludeRows,
+              problems: draft.excludeProblems,
+              listProblem: draft.excludeCountInvalid
+                ? listNote("routes.exclude", fallback: "Exclude at most 64 ranges.") : nil)
+            Text(
+              "Ranges left out of the routes this VPN's gateway sends, for example a network another VPN uses, so both can connect at once. Requires the native backend."
+            )
+            .font(.footnote).foregroundStyle(.secondary)
           }
           Toggle(
             "Preserve local network",

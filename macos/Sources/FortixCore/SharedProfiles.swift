@@ -120,12 +120,18 @@ public struct SharedProfileDraft: Equatable, Sendable {
     public var mode: String?
     /// Include is the complete requested prefix list.
     public var include: [String]?
+    /// Exclude is the complete list of ranges removed from gateway-pushed routes.
+    public var exclude: [String]?
     /// PreserveLAN keeps explicit false distinct from omission.
     public var preserveLAN: Bool?
     /// Creates partial routing policy.
-    public init(mode: String? = nil, include: [String]? = nil, preserveLAN: Bool? = nil) {
+    public init(
+      mode: String? = nil, include: [String]? = nil, exclude: [String]? = nil,
+      preserveLAN: Bool? = nil
+    ) {
       self.mode = mode
       self.include = include
+      self.exclude = exclude
       self.preserveLAN = preserveLAN
     }
   }
@@ -198,6 +204,9 @@ public struct SharedProfileDraft: Equatable, Sendable {
       if let include = routes.include {
         profile.routes.include = include.map(ProfileRules.normalizePrefix)
       }
+      if let exclude = routes.exclude {
+        profile.routes.exclude = exclude.map(ProfileRules.normalizePrefix)
+      }
       if let preserveLAN = routes.preserveLAN { profile.routes.preserveLAN = preserveLAN }
     }
     if let dns {
@@ -240,6 +249,9 @@ public struct SharedProfileDraft: Equatable, Sendable {
     if field == "routes.include" || field.hasPrefix("routes.include[") {
       return routes?.include != nil
     }
+    if field == "routes.exclude" || field.hasPrefix("routes.exclude[") {
+      return routes?.exclude != nil
+    }
     if field == "dns.domains" || field.hasPrefix("dns.domains[") { return dns?.domains != nil }
     return false
   }
@@ -260,6 +272,7 @@ public struct SharedProfileDraft: Equatable, Sendable {
   /// Normalize canonicalizes supplied lists and valid pins without filling absent fields.
   mutating func normalize() {
     if let include = routes?.include { routes?.include = include.map(ProfileRules.normalizePrefix) }
+    if let exclude = routes?.exclude { routes?.exclude = exclude.map(ProfileRules.normalizePrefix) }
     if let domains = dns?.domains { dns?.domains = domains.map(ProfileRules.normalizeDomain) }
     if let pin = trustedCert, let normalized = ProfileRules.normalizedPin(pin) {
       trustedCert = normalized
@@ -282,7 +295,7 @@ public enum SharedProfiles {
   /// NestedFields are the exact keys of each nested profile object.
   static let nestedFields: [String: Set<String>] = [
     "gateway": ["host", "port"], "mfa": ["mode", "digits", "period", "algorithm"],
-    "routes": ["mode", "include", "preserve_lan"], "dns": ["mode", "domains"],
+    "routes": ["mode", "include", "exclude", "preserve_lan"], "dns": ["mode", "domains"],
   ]
   /// ZeroProfile is the empty base used to validate partial drafts.
   static var zeroProfile: VPNProfile {
@@ -361,6 +374,7 @@ public enum SharedProfiles {
     for original in profiles {
       var profile = original
       profile.routes.include = profile.routes.include?.map(ProfileRules.normalizePrefix)
+      profile.routes.exclude = profile.routes.exclude?.map(ProfileRules.normalizePrefix)
       profile.dns.domains = profile.dns.domains?.map(ProfileRules.normalizeDomain)
       let problems = ProfileRules.problems(profile)
       guard problems.isEmpty else { throw SharedProfileError.invalid(problems) }
@@ -440,7 +454,7 @@ public enum SharedProfiles {
     if let routes = value["routes"] {
       draft.routes = .init(
         mode: try routes["mode"].map(string), include: try routes["include"].map(strings),
-        preserveLAN: try routes["preserve_lan"].map(bool))
+        exclude: try routes["exclude"].map(strings), preserveLAN: try routes["preserve_lan"].map(bool))
     }
     if let dns = value["dns"] {
       draft.dns = .init(mode: try dns["mode"].map(string), domains: try dns["domains"].map(strings))
@@ -485,6 +499,9 @@ public enum SharedProfiles {
     var routes: [SharedJSON.Member] = [.init(key: "mode", value: .string(profile.routes.mode))]
     if let include = profile.routes.include {
       routes.append(.init(key: "include", value: .array(include.map(SharedJSON.string))))
+    }
+    if let exclude = profile.routes.exclude {
+      routes.append(.init(key: "exclude", value: .array(exclude.map(SharedJSON.string))))
     }
     if let preserveLAN = profile.routes.preserveLAN {
       routes.append(.init(key: "preserve_lan", value: .bool(preserveLAN)))

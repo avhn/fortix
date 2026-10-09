@@ -67,17 +67,23 @@ public struct VPNProfile: Codable, Equatable, Sendable, Identifiable {
     public var mode: String
     /// Include contains only explicitly requested route prefixes.
     public var include: [String]?
+    /// Exclude lists ranges removed from gateway-pushed routes, such as a range another VPN owns.
+    public var exclude: [String]?
     /// PreserveLAN distinguishes omitted defaults from explicit false.
     public var preserveLAN: Bool?
     /// CodingKeys retains the helper's route field spelling.
     enum CodingKeys: String, CodingKey {
-      case mode, include
+      case mode, include, exclude
       case preserveLAN = "preserve_lan"
     }
     /// Creates routing configuration, retaining explicit local-network preservation choices.
-    public init(mode: String = "gateway", include: [String]? = nil, preserveLAN: Bool? = true) {
+    public init(
+      mode: String = "gateway", include: [String]? = nil, exclude: [String]? = nil,
+      preserveLAN: Bool? = true
+    ) {
       self.mode = mode
       self.include = include
+      self.exclude = exclude
       self.preserveLAN = preserveLAN
     }
   }
@@ -166,7 +172,7 @@ public struct VPNProfile: Codable, Equatable, Sendable, Identifiable {
     }
     let nested: [String: Set<String>] = [
       "gateway": ["host", "port"], "mfa": ["mode", "digits", "period", "algorithm"],
-      "routes": ["mode", "include", "preserve_lan"], "dns": ["mode", "domains"],
+      "routes": ["mode", "include", "exclude", "preserve_lan"], "dns": ["mode", "domains"],
     ]
     for (key, allowed) in nested {
       if let value = object[key] {

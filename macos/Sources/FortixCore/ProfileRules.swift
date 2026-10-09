@@ -63,12 +63,25 @@ public enum ProfileRules {
     for (index, message) in routeProblems(profile.routes.include ?? []) {
       add("routes.include[\(index)]", message)
     }
+    if let exclude = profile.routes.exclude {
+      if exclude.isEmpty || exclude.count > maxExclude {
+        add("routes.exclude", "must list 1..\(maxExclude) prefixes when present")
+      } else if profile.resolvedBackend == "openfortivpn" {
+        add("routes.exclude", "requires the native backend")
+      }
+      for (index, message) in routeProblems(exclude) {
+        add("routes.exclude[\(index)]", message)
+      }
+    }
     dnsModeProblems(profile.dns, add: add)
     for (index, message) in domainProblems(profile.dns.domains ?? []) {
       add("dns.domains[\(index)]", message)
     }
     return problems
   }
+
+  /// MaxExclude bounds excluded ranges; each one can split pushed routes further.
+  public static let maxExclude = 64
 
   /// RouteProblems reports each malformed, non-canonical, too broad, duplicate, or overlapping prefix.
   /// Results pair a list index with its first-found messages in helper order; valid lists return none.
@@ -91,7 +104,7 @@ public enum ProfileRules {
         }
         let shortest = min(earlier.bits, prefix.bits)
         if mask(earlier.address, bits: shortest) == mask(prefix.address, bits: shortest) {
-          problems.append((index, "overlaps another included prefix"))
+          problems.append((index, "overlaps another prefix in the list"))
           break
         }
       }
@@ -182,6 +195,7 @@ public enum ProfileRules {
       if (routes.include ?? []).isEmpty {
         add("routes.include", "custom requires a non-empty list")
       }
+      if routes.exclude != nil { add("routes.exclude", "only allowed for gateway or full") }
     default:
       add("routes.mode", "must be gateway, custom, or full")
     }

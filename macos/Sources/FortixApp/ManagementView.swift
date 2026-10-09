@@ -301,7 +301,9 @@ private struct ImportPreview: View {
           Text("\(draft.gateway.host):\(String(draft.gateway.resolvedPort)), username: \(draft.username)")
           Text("Backend: \(draft.resolvedBackend), MFA: \(draft.mfa.mode)")
           Text(
-            "Routes: \(draft.routes.mode) \((draft.routes.include ?? []).joined(separator: ", "))")
+            "Routes: \(draft.routes.mode) \((draft.routes.include ?? []).joined(separator: ", "))"
+              + ((draft.routes.exclude ?? []).isEmpty
+                ? "" : ", excluding \((draft.routes.exclude ?? []).joined(separator: ", "))"))
           Text("DNS: \(draft.dns.mode) \((draft.dns.domains ?? []).joined(separator: ", "))")
           if model.profiles.contains(where: { $0.id == draft.id }) {
             Text("This ID already exists. Edit the existing profile instead.")
