@@ -1,0 +1,17 @@
+Package: fortix
+Architecture: amd64
+Version: 0.2.0
+Priority: optional
+Maintainer: Mert Dede <doganmertdede@gmail.com>
+Installed-Size: 17857
+Depends: iproute2
+Recommends: openfortivpn, ppp
+Filename: pool/main/fortix_0.2.0_linux_amd64.deb
+Size: 7580052
+MD5sum: 0fe201161e1f8d3f29e9954140c00b4e
+SHA1: b4f0a87b1ddd742af45c2054f1aa441c7d38328b
+SHA256: f1c06786b6cbced5460b785bb0ee34d7afec0a1c554d04ffae7e37c19d5b0f4c
+SHA512: f2fdefbc66e38ef655f846c52868cc1885f5af150b34682b8484a131385938941e6dfd6ca0213e00bde365265b8b9a6381b7c4e89f47c979be11052dc0065079
+Homepage: https://github.com/avhn/fortix
+Description: FortiGate SSL VPN profile manager with a CLI and desktop tray.
+
