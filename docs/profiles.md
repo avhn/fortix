@@ -232,7 +232,7 @@ flowchart LR
     Export --> Shared[Secret-free shared JSON]
     Shared --> Import[profile import]
     Import --> Complete[Complete or merge and validate]
-    Complete --> Consent[Confirm any shared pin]
+    Complete --> Consent[Confirm a merge that changes the gateway]
     Consent --> Helper[Helper profile.put]
 ```
 
@@ -252,15 +252,19 @@ cannot also supply interactive completion or consent.
 
 An existing ID is refused without `--merge ID`. Merge overlays supplied fields
 onto the selected stored profile, keeps that profile's ID and username, and
-replaces supplied route and DNS lists rather than appending. All entries are
+replaces supplied route and DNS lists rather than appending. A merge that changes
+the gateway host or port is shown and needs confirmation at the default-No
+terminal prompt, or `--yes` noninteractively, because the next connection sends
+the password to the new gateway. All entries are
 validated and checked for existing IDs before the first save. Helper write failures
 stop further saves; a multi-profile import is not an atomic transaction.
 
-A nonempty shared `trusted_cert` is displayed before saving. Verify the pin and
-sender independently, then confirm with the default-No terminal prompt or `--yes`
-for noninteractive use. Shared import uses the same helper save operation as
-`profile add`, so submitted pins are ignored and cannot establish certificate
-trust; `fortix trust <id>` remains the trust path. Import never prompts for or
+A nonempty shared `trusted_cert` is printed as an unverified fingerprint and is
+not saved: shared import uses the same helper save operation as `profile add`,
+so submitted pins are ignored and cannot establish certificate trust. Whoever
+made the file chose that value, so a match proves nothing on its own. If the
+gateway certificate is rejected, confirm its fingerprint with the administrator
+over a separate channel, then run `fortix trust <id>`, the only trust path. Import never prompts for or
 stores a password. After importing, `fortix up <id>` asks for it when needed,
 and `fortix up <id> --save` can save it to the keychain after a successful connection.
 

@@ -125,8 +125,9 @@ func TestProfileImport(t *testing.T) {
 		{name: "missing lists", drafts: `{"routes":{"mode":"custom"},"dns":{"mode":"split"}}`, flags: []string{"--username", "local-user"}, want: 1, diagnostic: "id, name, gateway.host, routes.include, dns.domains"},
 		{name: "existing id", drafts: minimal, flags: []string{"--username", "local-user"}, existing: true, want: 1, diagnostic: "already exists; use --merge"},
 		{name: "merge", drafts: `{"id":"sender","routes":{"include":["192.0.2.128/25"]},"dns":{"domains":["new.example.com"]}}`, flags: []string{"--merge", "work", "--username", "ignored-user"}, existing: true, writes: 1},
-		{name: "pin refused", drafts: `{"id":"work","name":"Example","gateway":{"host":"vpn.example.com"},"trusted_cert":"` + pin + `"}`, flags: []string{"--username", "local-user"}, want: 1, diagnostic: "use --yes"},
-		{name: "pin accepted", drafts: `{"id":"work","name":"Example","gateway":{"host":"vpn.example.com"},"trusted_cert":"` + pin + `"}`, flags: []string{"--username", "local-user", "--yes"}, writes: 1},
+		{name: "pin shown", drafts: `{"id":"work","name":"Example","gateway":{"host":"vpn.example.com"},"trusted_cert":"` + pin + `"}`, flags: []string{"--username", "local-user"}, writes: 1, diagnostic: "unverified certificate fingerprint"},
+		{name: "merge gateway change refused", drafts: `{"gateway":{"host":"vpn.example.net"}}`, flags: []string{"--merge", "work"}, existing: true, want: 1, diagnostic: "use --yes"},
+		{name: "merge gateway change confirmed", drafts: `{"gateway":{"host":"vpn.example.net"}}`, flags: []string{"--merge", "work", "--yes"}, existing: true, writes: 1, diagnostic: "Your password would be sent to the new gateway"},
 		{name: "multiple", drafts: minimal + `,{"id":"second","name":"Second","gateway":{"host":"vpn.example.com"}}`, flags: []string{"--username", "local-user"}, writes: 2},
 		{name: "multiple id override", drafts: minimal + `,{"id":"second"}`, flags: []string{"--id", "other"}, want: 1, diagnostic: "single-profile file"},
 		{name: "multiple name override", drafts: minimal + `,{"id":"second"}`, flags: []string{"--name", "Other"}, want: 1, diagnostic: "single-profile file"},
@@ -181,6 +182,10 @@ func TestProfileImport(t *testing.T) {
 				if tc.name == "merge" {
 					if p.ID != "work" || p.Username != "existing-user" || !reflect.DeepEqual(p.Routes.Include, []string{"192.0.2.128/25"}) || !reflect.DeepEqual(p.DNS.Domains, []string{"new.example.com"}) {
 						t.Fatalf("merge replaced identity or appended lists: %+v", p)
+					}
+				} else if strings.HasPrefix(tc.name, "merge gateway") {
+					if p.Username != "existing-user" || p.Gateway.Host != "vpn.example.net" {
+						t.Fatalf("confirmed gateway merge: %+v", p)
 					}
 				} else if p.Username != "local-user" {
 					t.Fatalf("incorrect local username: %q", p.Username)
@@ -285,14 +290,42 @@ func TestSharedCommandSyntax(t *testing.T) {
 	}
 }
 
-// TestSharedPinConfirmation verifies interactive default refusal and explicit acceptance.
-func TestSharedPinConfirmation(t *testing.T) {
+// TestSharedPinNotice prints a file's fingerprint as unverified information and never
+// asks for acceptance, since the helper does not store submitted pins.
+func TestSharedPinNotice(t *testing.T) {
+	p := &fakePrompt{}
+	var errout strings.Builder
+	r := runner{ctx: context.Background(), errout: &errout, options: Options{Prompt: p}}
+	if err := r.showSharedPin(profile.Draft{TrustedCert: new(strings.Repeat("a", 64))}); err != nil {
+		t.Fatal(err)
+	}
+	if p.confirms != 0 || !strings.Contains(errout.String(), "unverified") || !strings.Contains(errout.String(), strings.Repeat("a", 64)) {
+		t.Fatalf("notice: %d %q", p.confirms, errout.String())
+	}
+}
+
+// TestMergeGatewayChange requires confirmation, or --yes when noninteractive, before a
+// merge points an existing profile at another gateway, and stays silent otherwise.
+func TestMergeGatewayChange(t *testing.T) {
+	base := profile.Profile{ID: "work", Gateway: profile.Gateway{Host: "vpn.example.com", Port: 443}}
+	moved := base
+	moved.Gateway.Host = "vpn.example.net"
 	for _, yes := range []bool{false, true} {
 		p := &fakePrompt{yes: yes}
 		r := runner{ctx: context.Background(), errout: io.Discard, options: Options{Prompt: p}}
-		err := r.confirmSharedPin(profile.Draft{TrustedCert: new(strings.Repeat("a", 64))}, false, true)
-		if (err == nil) != yes || p.confirms != 1 {
-			t.Fatalf("confirmation: %v %d", err, p.confirms)
+		if err := r.confirmGatewayChange(base, moved, false, true); (err == nil) != yes || p.confirms != 1 {
+			t.Fatalf("interactive confirmation: %v %d", err, p.confirms)
 		}
+	}
+	p := &fakePrompt{}
+	r := runner{ctx: context.Background(), errout: io.Discard, options: Options{Prompt: p}}
+	if err := r.confirmGatewayChange(base, moved, false, false); err == nil {
+		t.Fatal("noninteractive gateway change accepted without --yes")
+	}
+	if err := r.confirmGatewayChange(base, moved, true, false); err != nil {
+		t.Fatalf("--yes refused: %v", err)
+	}
+	if err := r.confirmGatewayChange(base, base, false, false); err != nil || p.confirms != 0 {
+		t.Fatalf("unchanged gateway prompted: %v %d", err, p.confirms)
 	}
 }

@@ -116,7 +116,7 @@ func (r *runner) importShared(c command) error {
 			}
 			profiles = append(profiles, p)
 		}
-		if err := r.confirmSharedPin(draft, c.yes, interactive); err != nil {
+		if err := r.showSharedPin(draft); err != nil {
 			return err
 		}
 		drafts[i] = draft
@@ -135,6 +135,9 @@ func (r *runner) importShared(c command) error {
 		}
 		p := drafts[0].Apply(base)
 		if err := p.Validate(); err != nil {
+			return err
+		}
+		if err := r.confirmGatewayChange(base, p, c.yes, interactive); err != nil {
 			return err
 		}
 		profiles = append(profiles, p)
@@ -252,27 +255,39 @@ func removeUsername(fields []string) []string {
 	return result
 }
 
-// confirmSharedPin displays a present nonempty pin before accepting explicit sender trust.
-// Noninteractive input requires --yes; declining or failed confirmation prevents every write.
-func (r *runner) confirmSharedPin(d profile.Draft, yes, interactive bool) error {
+// showSharedPin prints a fingerprint carried by the file as unverified information.
+// The helper never stores a submitted pin, so there is nothing to accept here; a gateway
+// certificate is only trusted through `fortix trust` after independent verification.
+func (r *runner) showSharedPin(d profile.Draft) error {
 	if d.TrustedCert == nil || *d.TrustedCert == "" {
 		return nil
 	}
-	if _, err := fmt.Fprintf(r.errout, "Shared certificate pin SHA256: %s\nA shared pin is only as trustworthy as its sender. Verify it independently.\n", *d.TrustedCert); err != nil {
+	_, err := fmt.Fprintf(r.errout, "The file carries an unverified certificate fingerprint, which is not saved:\nSHA256: %s\nIf the gateway certificate is rejected, confirm its fingerprint with your administrator\nover a separate channel before running fortix trust.\n", *d.TrustedCert)
+	return err
+}
+
+// confirmGatewayChange stops a merge that would point an existing profile at another
+// gateway unless the user confirms it, because the next connection sends the password
+// there. Noninteractive input requires --yes; declining prevents every write.
+func (r *runner) confirmGatewayChange(base, merged profile.Profile, yes, interactive bool) error {
+	if base.Gateway.Host == merged.Gateway.Host && base.Gateway.Port == merged.Gateway.Port {
+		return nil
+	}
+	if _, err := fmt.Fprintf(r.errout, "This file changes the gateway of %q from %s:%d to %s:%d.\nYour password would be sent to the new gateway.\n", base.ID, base.Gateway.Host, base.Gateway.Port, merged.Gateway.Host, merged.Gateway.Port); err != nil {
 		return err
 	}
 	if yes {
 		return nil
 	}
 	if !interactive {
-		return errors.New("shared certificate pin requires confirmation; use --yes after verifying the sender")
+		return errors.New("merge changes the gateway; use --yes after confirming the change")
 	}
-	confirmed, err := r.options.Prompt.Confirm(r.ctx, "Accept this shared certificate pin?")
+	confirmed, err := r.options.Prompt.Confirm(r.ctx, "Change the gateway?")
 	if err != nil {
 		return err
 	}
 	if !confirmed {
-		return errors.New("shared certificate pin declined")
+		return errors.New("gateway change declined")
 	}
 	return nil
 }

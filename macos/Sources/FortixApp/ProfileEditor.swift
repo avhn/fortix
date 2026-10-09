@@ -193,18 +193,18 @@ struct ProfileEditor: View {
     _draft = State(initialValue: ProfileDraft(profile: profile ?? ProfileDraft.newProfile))
   }
 
-  /// Creates an import review sheet; a file profile whose ID already exists defaults to a merge.
+  /// Creates an import review sheet as a new profile. A merge is always an explicit choice,
+  /// preselecting the existing profile with the file's ID, because a merge can change the
+  /// gateway that profile connects to.
   init(model: AppModel, shared: SharedImport, onStopImport: @escaping () -> Void) {
     self.model = model
     editingExisting = false
     self.shared = shared
     self.onStopImport = onStopImport
     let match = model.profiles.first { $0.id == shared.draft.id }
-    _target = State(initialValue: match == nil ? .new : .merge)
+    _target = State(initialValue: .new)
     _mergeID = State(initialValue: match?.id ?? model.profiles.first?.id ?? "")
-    _draft = State(
-      initialValue: match.map { ProfileDraft(shared: shared.draft, merging: $0) }
-        ?? ProfileDraft(shared: shared.draft))
+    _draft = State(initialValue: ProfileDraft(shared: shared.draft))
   }
 
   /// Existing is true for ordinary edits and for merges, which must keep the chosen ID.
@@ -317,10 +317,10 @@ struct ProfileEditor: View {
         }
         Section("Certificate trust") {
           if let importedPin {
-            Text("Fingerprint from the imported file").font(.headline)
+            Text("Unverified fingerprint from the imported file").font(.headline)
             Text(importedPin).font(.caption.monospaced()).textSelection(.enabled)
             Text(
-              "This SHA-256 fingerprint came from the file and is not saved. If the gateway certificate cannot be verified when you first connect, Fortix shows its fingerprint: trust it only if it matches this one."
+              "Whoever made this file supplied this SHA-256 fingerprint, and it is not saved. A matching fingerprint proves nothing if the file itself was tampered with. If the gateway certificate cannot be verified when you connect, confirm its fingerprint with your administrator over a separate channel before trusting it."
             ).foregroundStyle(.secondary)
           }
           Text(draft.profile.trustedCert ?? "System certificate validation; no stored pin.")
@@ -377,12 +377,29 @@ struct ProfileEditor: View {
           Text(
             "Only fields in the file replace this profile's values. Its ID and username are kept, and routes and DNS domains in the file replace those lists as a whole."
           ).font(.footnote).foregroundStyle(.secondary)
+          if let change = gatewayChange {
+            Label(
+              "This file changes the gateway from \(change.from) to \(change.to). Your password would be sent to the new gateway. Confirm the change with your administrator before saving.",
+              systemImage: "exclamationmark.triangle.fill"
+            ).foregroundStyle(.orange)
+          }
         } else {
           Text("Fields marked as not in the imported file must be filled in before saving.")
             .font(.footnote).foregroundStyle(.secondary)
         }
       }
     }
+  }
+
+  /// GatewayChange describes a merge that would point an existing profile at another gateway.
+  private var gatewayChange: (from: String, to: String)? {
+    guard let shared, target == .merge,
+      let base = model.profiles.first(where: { $0.id == mergeID })
+    else { return nil }
+    let host = shared.draft.gateway?.host ?? base.gateway.host
+    let port = shared.draft.gateway?.port ?? base.gateway.resolvedPort
+    guard host != base.gateway.host || port != base.gateway.resolvedPort else { return nil }
+    return ("\(base.gateway.host):\(base.gateway.resolvedPort)", "\(host):\(port)")
   }
 
   /// ReloadImport rebuilds the draft from the file whenever the import target changes.
