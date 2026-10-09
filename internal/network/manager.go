@@ -47,12 +47,11 @@ type Options struct {
 
 // tunnel reserves configured prefixes and full mode while an attempt is in flight.
 // Addresses and observed pushed routes are added as negotiation makes them available.
-// The peer is retained only after native configuration succeeds, so caller-supplied
-// route effects cannot exempt unrelated destinations from conflict checks.
+// Only the configured local address can identify a native connected route, so
+// caller-supplied peers cannot exempt unrelated destinations from conflict checks.
 type tunnel struct {
 	profile    profile.Profile
 	localIP    netip.Addr
-	peerIP     netip.Addr
 	link       string
 	attempt    uint64
 	identity   backend.LinkIdentity

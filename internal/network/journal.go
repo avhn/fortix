@@ -7,6 +7,8 @@ import "github.com/avhn/fortix/internal/backend"
 // Journal identifies one backend generation and its exact owned network resources.
 // PID and StartTime belong only to the process backend. Native records bind the
 // kernel link index and negotiated local address; a name alone never grants ownership.
+// PeerIP repeats LocalIP for new unnumbered native links; older distinct peer_ip values
+// remain readable for cleanup, which relies only on the link identity and local address.
 // An omitted Backend is interpreted as openfortivpn for older process records.
 type Journal struct {
 	Profile          string                `json:"profile"`

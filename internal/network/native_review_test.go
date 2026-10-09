@@ -10,10 +10,10 @@ import (
 	"github.com/avhn/fortix/internal/profile"
 )
 
-// TestNativeInitialPeerRoute applies a first broader split through the configured native
-// link despite its kernel-connected peer /32. Revalidation is inert and teardown leaves
-// both the physical path and connected route intact, without ever journaling the peer.
-func TestNativeInitialPeerRoute(t *testing.T) {
+// TestNativeInitialLocalRoute applies a broader split despite Darwin's local /32.
+// Linux has no connected host route in the main table. Revalidation is inert and
+// teardown leaves the physical path and any kernel-connected route intact.
+func TestNativeInitialLocalRoute(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
 		t.Run(platform, func(t *testing.T) {
 			m, r := nativeManager(t, platform)
@@ -22,13 +22,20 @@ func TestNativeInitialPeerRoute(t *testing.T) {
 			e, j := configuredNative(t, m, p, 0)
 			e.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
 			baseline := slices.Clone(r.base.routes)
-			if len(baseline) != 2 || baseline[1].CIDR != netip.PrefixFrom(e.PeerIP, 32).String() || m.active[p.ID].negotiated {
-				t.Fatalf("initial kernel peer route missing: %+v", baseline)
+			wantRoutes := 1
+			if platform == "darwin" {
+				wantRoutes++
+				if baseline[1].CIDR != netip.PrefixFrom(e.LocalIP, 32).String() {
+					t.Fatalf("initial kernel local route missing: %+v", baseline)
+				}
+			}
+			if len(baseline) != wantRoutes || m.active[p.ID].negotiated {
+				t.Fatalf("unexpected initial route state: %+v", baseline)
 			}
 			if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); err != nil {
 				t.Fatal(err)
 			}
-			if len(j.Routes) != 1 || j.Routes[0].CIDR != "10.0.0.0/8" || !slices.Contains(r.base.routes, baseline[1]) {
+			if len(j.Routes) != 1 || j.Routes[0].CIDR != "10.0.0.0/8" || len(r.base.routes) != len(baseline)+1 {
 				t.Fatalf("connected peer claimed or replaced: %+v table=%+v", j, r.base.routes)
 			}
 			calls := len(r.base.calls)
@@ -47,22 +54,60 @@ func TestNativeInitialPeerRoute(t *testing.T) {
 	}
 }
 
-// TestNativePeerRouteConflicts limits the connected-route exemption to the trusted peer
-// on the configured link. Exact peer destinations, foreign next hops, other links and
-// unrelated same-link host routes remain conflicts and cannot enter the route journal.
-func TestNativePeerRouteConflicts(t *testing.T) {
+// TestNativeDarwinLocalRouteShapes accepts an absent local host route or the kernel's
+// direct-device and local-gateway spellings. None is required or helper-owned, and
+// configuration retries and broader policy remain valid without claiming the route.
+func TestNativeDarwinLocalRouteShapes(t *testing.T) {
+	for _, shape := range []string{"absent", "direct", "local gateway", "interface gateway", "link gateway"} {
+		t.Run(shape, func(t *testing.T) {
+			m, r := nativeManager(t, "darwin")
+			p := nativeProfile("work")
+			p.Routes = profile.Routes{Mode: "gateway"}
+			e, j := configuredNative(t, m, p, 0)
+			r.base.routes = slices.DeleteFunc(r.base.routes, func(route JournalRoute) bool { return route.Interface == e.Interface })
+			localRoute := JournalRoute{CIDR: netip.PrefixFrom(e.LocalIP, 32).String(), Interface: e.Interface}
+			switch shape {
+			case "local gateway":
+				localRoute.Gateway = e.LocalIP.String()
+			case "interface gateway":
+				localRoute.Gateway = e.Interface
+			case "link gateway":
+				localRoute.Gateway = "link#12"
+			}
+			if shape != "absent" {
+				r.base.routes = append(r.base.routes, localRoute)
+			}
+			baseline := slices.Clone(r.base.routes)
+			if err := m.ConfigureNative(context.Background(), e, &j, ignoreJournal); err != nil {
+				t.Fatal(err)
+			}
+			e.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+			if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); err != nil || len(j.Routes) != 1 || j.Routes[0].CIDR != "10.0.0.0/8" {
+				t.Fatalf("local route shape affected policy: %v %+v", err, j)
+			}
+			if err := m.Teardown(context.Background(), j); err != nil || !slices.Equal(r.base.routes, baseline) {
+				t.Fatalf("kernel route claimed or removed: %v %+v", err, r.base.routes)
+			}
+		})
+	}
+}
+
+// TestNativeLocalRouteConflicts limits Darwin's exemption to the configured local IP.
+// Linux has no main-table exemption. Exact local destinations, foreign next hops,
+// other links and unrelated host routes cannot enter the route journal.
+func TestNativeLocalRouteConflicts(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
-		for _, scenario := range []string{"exact peer", "other link", "foreign gateway", "unrelated host", "forged peer", "reused index", "unconfigured"} {
+		for _, scenario := range []string{"exact local", "other link", "foreign gateway", "unrelated host", "forged peer", "reused index", "unconfigured"} {
 			t.Run(platform+"/"+scenario, func(t *testing.T) {
 				m, r := nativeManager(t, platform)
 				p := nativeProfile("work")
 				p.Routes = profile.Routes{Mode: "gateway"}
 				e, j := configuredNative(t, m, p, 0)
 				e.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
-				foreign := JournalRoute{CIDR: netip.PrefixFrom(e.PeerIP, 32).String(), Interface: e.Interface}
+				foreign := JournalRoute{CIDR: netip.PrefixFrom(e.LocalIP, 32).String(), Interface: e.Interface}
 				switch scenario {
-				case "exact peer":
-					e.PushedPrefixes = []netip.Prefix{netip.PrefixFrom(e.PeerIP, 32)}
+				case "exact local":
+					e.PushedPrefixes = []netip.Prefix{netip.PrefixFrom(e.LocalIP, 32)}
 				case "other link":
 					foreign.Interface = "en0"
 				case "foreign gateway":
@@ -79,7 +124,10 @@ func TestNativePeerRouteConflicts(t *testing.T) {
 					current.configured = false
 					m.active[p.ID] = current
 				}
-				if scenario != "exact peer" && scenario != "reused index" && scenario != "unconfigured" {
+				if scenario == "exact local" && platform == "linux" {
+					r.base.routes = append(r.base.routes, foreign)
+				}
+				if scenario != "exact local" && scenario != "reused index" && scenario != "unconfigured" {
 					r.base.routes = append(r.base.routes, foreign)
 				}
 				baseline := slices.Clone(r.base.routes)

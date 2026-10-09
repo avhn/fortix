@@ -267,11 +267,12 @@ func (t *Tunnel) run() {
 		return
 	}
 	link = info.Link
-	if !info.PeerIP.IsValid() {
-		t.err = errors.New("gateway omitted PPP peer address")
+	metadata, err := nativeNegotiated(info, conn.Config)
+	if err != nil {
+		t.err = err
 		return
 	}
-	mtu := min(info.MRU, info.PeerMRU)
+	mtu := metadata.MTU
 	// Allocation can be interrupted, but a created link survives transport shutdown
 	// until the helper has removed its owned routes and resolver entries.
 	deviceCtx, deviceCancel := context.WithCancel(context.Background())
@@ -304,13 +305,7 @@ func (t *Tunnel) run() {
 		t.err = err
 		return
 	}
-	dns := make([]netip.Addr, 0, 2)
-	for _, ip := range []netip.Addr{info.PrimaryDNS, info.SecondaryDNS} {
-		if ip.IsValid() {
-			dns = append(dns, ip)
-		}
-	}
-	t.emit(backend.Negotiated{LocalIP: info.LocalIP, PeerIP: info.PeerIP, MTU: mtu, DNS: dns, Suffix: strings.Join(conn.Config.Domains, " "), PushedPrefixes: conn.Config.SplitRoutes})
+	t.emit(metadata)
 	t.emit(backend.LinkReady{Link: identity})
 	t.mu.Lock()
 	t.ready = true
@@ -338,6 +333,24 @@ func (t *Tunnel) run() {
 	case <-pump.done:
 		t.err = pump.err
 	}
+}
+
+// nativeNegotiated converts PPP info and XML config into native network metadata.
+// A usable negotiated local IPv4 address is mandatory; XML cannot supply a fallback.
+// Native links are unnumbered, so PeerIP repeats LocalIP for existing session consumers.
+// The advertised PPP peer is ignored, even if absent or invalid, and never reaches host
+// configuration. DNS, MTU and pushed policy retain their negotiated sources.
+func nativeNegotiated(info ppp.Negotiated, config VPNConfig) (backend.Negotiated, error) {
+	if !info.LocalIP.Is4() || !info.LocalIP.IsGlobalUnicast() || info.LocalIP == netip.MustParseAddr("255.255.255.255") {
+		return backend.Negotiated{}, errors.New("gateway omitted usable PPP local address")
+	}
+	dns := make([]netip.Addr, 0, 2)
+	for _, ip := range []netip.Addr{info.PrimaryDNS, info.SecondaryDNS} {
+		if ip.IsValid() {
+			dns = append(dns, ip)
+		}
+	}
+	return backend.Negotiated{LocalIP: info.LocalIP, PeerIP: info.LocalIP, MTU: min(info.MRU, info.PeerMRU), DNS: dns, Suffix: strings.Join(config.Domains, " "), PushedPrefixes: config.SplitRoutes}, nil
 }
 
 // outcome translates typed protocol errors without exposing gateway body text.

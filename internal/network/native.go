@@ -109,16 +109,18 @@ func (m *Manager) reservationRoutes(ctx context.Context) ([]JournalRoute, error)
 	return routes, nil
 }
 
-// connectedPeerRoute recognizes only the configured native link's kernel peer /32.
+// connectedNativeRoute recognizes Darwin's optional kernel local /32 after configuring
+// an unnumbered point-to-point link with identical endpoints. Linux assigns no peer and
+// gets no main-table host-route exemption; its local address route is in the local table.
 // The caller must first verify the registered attempt, kernel index and local address.
-// Direct-device spellings and Darwin's local-endpoint gateway are accepted; routed
-// next hops and unrelated host destinations remain competitors. Recognition conveys
-// no ownership and never permits this connected route to be journaled or deleted.
-func connectedPeerRoute(current tunnel, route JournalRoute) bool {
-	if !current.configured || !tunnelAddress(current.peerIP) {
+// Direct-device spellings and Darwin's local-address gateway are accepted; routed next
+// hops and unrelated destinations remain competitors. The route is never required,
+// claimed, journaled or deleted by recognition.
+func (m *Manager) connectedNativeRoute(current tunnel, route JournalRoute) bool {
+	if m.os != "darwin" || !current.configured || !tunnelAddress(current.localIP) {
 		return false
 	}
-	expected := JournalRoute{CIDR: netip.PrefixFrom(current.peerIP, 32).String(), Interface: current.identity.Interface}
+	expected := JournalRoute{CIDR: netip.PrefixFrom(current.localIP, 32).String(), Interface: current.identity.Interface}
 	return sameRoute(expected, route) || (route.CIDR == expected.CIDR && route.Interface == expected.Interface && route.Gateway == current.localIP.String())
 }
 
@@ -127,7 +129,7 @@ func connectedPeerRoute(current tunnel, route JournalRoute) bool {
 // registered attempt and carry its verified kernel local IPv4 address. No host mutation
 // occurs here. Full defaults may cover narrower physical/LAN routes, but cannot compete
 // with another tunnel's default or an existing identical /1 route. A broader route may
-// cover this verified link's configured peer /32 without claiming the connected route.
+// cover Darwin's verified local /32 without claiming the kernel-connected route.
 // Reservations remain until successful teardown, including later transaction failures.
 func (m *Manager) ReserveNegotiated(ctx context.Context, p *profile.Profile, effect session.Effect) error {
 	return m.reserveNegotiated(ctx, p, effect, netip.Addr{})
@@ -147,6 +149,9 @@ func (m *Manager) reserveNegotiated(ctx context.Context, p *profile.Profile, eff
 	m.mu.Lock()
 	current := m.active[p.ID]
 	m.mu.Unlock()
+	if !current.configured {
+		return &InterfaceError{}
+	}
 	if current.profile.Backend != p.Backend || current.profile.Routes.Mode != p.Routes.Mode ||
 		!slices.Equal(current.profile.Routes.Include, p.Routes.Include) || current.profile.DNS.Mode != p.DNS.Mode ||
 		!slices.Equal(current.profile.DNS.Domains, p.DNS.Domains) {
@@ -176,9 +181,9 @@ func (m *Manager) reserveNegotiated(ctx context.Context, p *profile.Profile, eff
 		}
 		for _, route := range routes {
 			other := netip.MustParsePrefix(route.CIDR)
-			// Address configuration creates this peer route before the first reservation.
+			// Darwin may create a local host route before the first reservation.
 			// Only broader policy may cover it; an exact destination remains unowned.
-			if prefix.Bits() < other.Bits() && prefix.Contains(other.Addr()) && connectedPeerRoute(current, route) {
+			if prefix.Bits() < other.Bits() && prefix.Contains(other.Addr()) && m.connectedNativeRoute(current, route) {
 				continue
 			}
 			// A protected TLS host path must remain more specific than the tunnel route.

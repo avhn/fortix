@@ -133,7 +133,7 @@ func TestGatewayBorrowingAndReplacement(t *testing.T) {
 			if scenario == "reused physical index" {
 				r.links["en0"].index++
 			}
-			if err := m.Teardown(context.Background(), j); err != nil || len(r.base.routes) != 3 {
+			if err := m.Teardown(context.Background(), j); err != nil || len(r.base.routes) != 2 {
 				t.Fatalf("foreign physical path removed: %v %+v", err, r.base.routes)
 			}
 		})
@@ -189,7 +189,7 @@ func TestNativeFullWithSplits(t *testing.T) {
 	p.Routes = profile.Routes{Mode: "full"}
 	e, j := configuredNative(t, m, p, 0)
 	e.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix("10.40.0.0/16")}
-	if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); err != nil || len(j.Routes) != 1 || j.Routes[0].CIDR != "10.40.0.0/16" || len(r.base.routes) != 3 {
+	if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); err != nil || len(j.Routes) != 1 || j.Routes[0].CIDR != "10.40.0.0/16" || len(r.base.routes) != 2 {
 		t.Fatalf("full splits replaced by defaults: %v %+v", err, j)
 	}
 }
@@ -231,10 +231,14 @@ func TestGatewayRecovery(t *testing.T) {
 					}
 				}
 				fresh := freshNativeManager(t, m)
-				if err := fresh.RecoverAll(context.Background(), journals); err != nil || len(r.base.routes) != 3 {
+				wantRoutes := 1
+				if platform == "darwin" {
+					wantRoutes += 2
+				}
+				if err := fresh.RecoverAll(context.Background(), journals); err != nil || len(r.base.routes) != wantRoutes {
 					t.Fatalf("shared recovery: %v %+v", err, r.base.routes)
 				}
-				if err := fresh.RecoverAll(context.Background(), journals); err != nil || len(r.base.routes) != 3 {
+				if err := fresh.RecoverAll(context.Background(), journals); err != nil || len(r.base.routes) != wantRoutes {
 					t.Fatalf("repeated recovery: %v %+v", err, r.base.routes)
 				}
 			})
@@ -254,10 +258,10 @@ func TestGatewayDeletionRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.base.fail, r.base.failOnce = "delete 203.0.113.5/32", true
-	if err := m.Teardown(context.Background(), j); err == nil || len(m.gateways) != 1 || len(r.base.routes) != 3 {
+	if err := m.Teardown(context.Background(), j); err == nil || len(m.gateways) != 1 || len(r.base.routes) != 2 {
 		t.Fatalf("failed host deletion lost lease: %v %+v", err, r.base.routes)
 	}
-	if err := m.Teardown(context.Background(), j); err != nil || len(m.gateways) != 0 || len(r.base.routes) != 2 {
+	if err := m.Teardown(context.Background(), j); err != nil || len(m.gateways) != 0 || len(r.base.routes) != 1 {
 		t.Fatalf("host deletion retry: %v %+v", err, r.base.routes)
 	}
 }

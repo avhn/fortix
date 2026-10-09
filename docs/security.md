@@ -183,13 +183,20 @@ flowchart LR
 Custom routes are checked against active/configured routes, existing routes,
 and connected subnets. Duplicate negotiated IPv4 addresses and conflicting full
 tunnels are rejected. Native journals its link identity before configuration and
-checks both negotiated endpoints before persisting address intent or configuring
-the link. Equal endpoints, connected-network collisions, the TLS gateway address,
-other tunnels' reserved prefixes or endpoints, and live non-default routes report
-`CONFLICT`. Only the same registered link's verified, identical peer `/32` is
-exempt during a configuration retry, including partial Linux activation. Native
-reserves negotiated destinations before route mutation. The helper verifies the
-kernel link and negotiated local IP before applying routes or split DNS;
+configures an unnumbered link using only the usable negotiated local IPv4 address.
+The gateway-advertised PPP peer is discarded, even when missing or invalid, and
+never becomes a host endpoint or route. macOS repeats the local address in both
+`ifconfig` endpoint positions; Linux assigns a local `/32` without a peer.
+Connected-network collisions, the TLS gateway address, other tunnels' reserved
+prefixes or local addresses, and live non-default routes report `CONFLICT`.
+Only the same registered macOS link's verified local `/32` is exempt during an
+identical configuration retry or when covered by a broader selected route; this
+kernel route is not required, journaled or removed. Linux has no peer-route
+exemption, and partial activation retries do not duplicate the address add.
+Existing journals with a distinct `peer_ip` still recover using link identity
+and the local address. Native reserves negotiated destinations before mutation.
+The helper verifies the kernel link and negotiated local IP before applying
+routes or split DNS;
 mismatches report `INTERFACE_MISMATCH`. Openfortivpn route-failure observations
 from stdout and stderr, including existing-route clashes, fail the attempt.
 It can install pushed routes before detection, so transient changes are possible.

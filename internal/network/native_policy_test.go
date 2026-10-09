@@ -76,7 +76,7 @@ func TestNativeSameLinkRouteRace(t *testing.T) {
 
 // TestNativePostAddConflict detects a competing live destination even after an add
 // succeeded. Rollback removes the genuinely added native route, never the competitor
-// or the kernel-connected peer route created by address configuration.
+// or unrelated host routes.
 func TestNativePostAddConflict(t *testing.T) {
 	m, r := nativeManager(t, "linux")
 	p := nativeProfile("work")
@@ -91,7 +91,7 @@ func TestNativePostAddConflict(t *testing.T) {
 		}
 	}
 	var conflict *ConflictError
-	if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); !errors.As(err, &conflict) || len(j.Routes) != 0 || !slices.Contains(r.base.routes, foreign) || len(r.base.routes) != 3 {
+	if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); !errors.As(err, &conflict) || len(j.Routes) != 0 || !slices.Contains(r.base.routes, foreign) || len(r.base.routes) != 2 {
 		t.Fatalf("post-add route conflict escaped: %v %+v", err, r.base.routes)
 	}
 }

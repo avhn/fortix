@@ -28,7 +28,7 @@ type nativeKernelLink struct {
 }
 
 // nativeRunner extends the route fake with native address and link configuration.
-// Address assignment creates a connected peer route that is not helper-owned. Rejections
+// Darwin address assignment creates a local host route that is not helper-owned. Rejections
 // can install a route before returning an error, while before observes durable intent.
 type nativeRunner struct {
 	base          *fakeRunner
@@ -70,9 +70,8 @@ func (r *nativeRunner) Run(ctx context.Context, candidates []string, args ...str
 			_, _ = fmt.Sscan(args[5], &link.mtu)
 			r.connectPeer(args[0])
 		case args[0] == "addr":
-			link := r.links[args[6]]
-			link.local, link.peer = netip.MustParsePrefix(args[2]).Addr(), netip.MustParseAddr(args[4])
-			r.connectPeer(args[6])
+			link := r.links[args[4]]
+			link.local, link.peer = netip.MustParsePrefix(args[2]).Addr(), netip.Addr{}
 		default:
 			_, _ = fmt.Sscan(args[5], &r.links[args[3]].mtu)
 		}
@@ -89,9 +88,10 @@ func (r *nativeRunner) Run(ctx context.Context, candidates []string, args ...str
 	return data, err
 }
 
-// connectPeer models the kernel-connected /32 created by point-to-point address assignment.
-// Darwin spells its gateway as the local endpoint; Linux reports a direct device route.
-// Reconfiguration replaces only this link's existing peer route without duplicating it.
+// connectPeer models Darwin's kernel-connected local /32 for identical endpoints.
+// Linux address assignment does not create a peer route in the main table; legacy
+// recovery fixtures also use this method to restore an older distinct peer route.
+// Reconfiguration replaces only this link's host route without duplicating it.
 func (r *nativeRunner) connectPeer(name string) {
 	link := r.links[name]
 	route := JournalRoute{CIDR: netip.PrefixFrom(link.peer, 32).String(), Interface: name}
@@ -177,7 +177,7 @@ func journalSnapshot(t *testing.T, j Journal) Journal {
 }
 
 // nativeAttempt reserves policy and binds a fake allocated link before configuration.
-// Returned effect includes distinct per-link local/peer pairs and an unrelated DNS suffix.
+// Returned effect includes unnumbered per-link local addresses and an unrelated DNS suffix.
 func nativeAttempt(t *testing.T, m *Manager, p *profile.Profile, number int) (session.Effect, Journal) {
 	t.Helper()
 	if err := m.CheckUp(context.Background(), p); err != nil {
@@ -187,7 +187,7 @@ func nativeAttempt(t *testing.T, m *Manager, p *profile.Profile, number int) (se
 	if m.os == "darwin" {
 		name = fmt.Sprintf("utun%d", number)
 	}
-	e := session.Effect{Profile: p.ID, Attempt: 1, Interface: name, Link: backend.LinkIdentity{Interface: name, Index: 12 + number}, LocalIP: netip.MustParseAddr(fmt.Sprintf("10.99.0.%d", 2+number)), PeerIP: netip.MustParseAddr(fmt.Sprintf("10.99.%d.1", number)), MTU: 1354, DNS: []netip.Addr{netip.MustParseAddr("10.20.0.1")}, Suffix: "pushed.example.net"}
+	e := session.Effect{Profile: p.ID, Attempt: 1, Interface: name, Link: backend.LinkIdentity{Interface: name, Index: 12 + number}, LocalIP: netip.MustParseAddr(fmt.Sprintf("10.99.0.%d", 2+number)), PeerIP: netip.MustParseAddr(fmt.Sprintf("10.99.0.%d", 2+number)), MTU: 1354, DNS: []netip.Addr{netip.MustParseAddr("10.20.0.1")}, Suffix: "pushed.example.net"}
 	j := Journal{Profile: p.ID, Attempt: e.Attempt}
 	if err := m.RegisterLink(context.Background(), p.ID, e.Attempt, e.Link, &j, ignoreJournal); err != nil {
 		t.Fatal(err)
@@ -207,8 +207,8 @@ func configuredNative(t *testing.T, m *Manager, p *profile.Profile, number int) 
 }
 
 // TestNativeConfiguration proves registration precedes mutation and platform argv
-// configures the negotiated local IP, peer and MTU. Repeated configuration only reads
-// live routes to revalidate endpoints, without duplicating persistence or mutations.
+// configures the negotiated local IP and MTU without an advertised peer. Repeated
+// configuration only reads live routes, without duplicating persistence or mutations.
 func TestNativeConfiguration(t *testing.T) {
 	for _, platform := range []string{"darwin", "linux"} {
 		t.Run(platform, func(t *testing.T) {
@@ -228,8 +228,24 @@ func TestNativeConfiguration(t *testing.T) {
 				t.Fatal(err)
 			}
 			r.before = nil
+			wantCommands := [][]string{{"/sbin/ifconfig", e.Interface, "inet", e.LocalIP.String(), e.LocalIP.String(), "mtu", "1354", "up"}}
+			if platform == "linux" {
+				wantCommands = [][]string{
+					{"/sbin/ip", "/usr/sbin/ip", "/bin/ip", "addr", "add", e.LocalIP.String() + "/32", "dev", e.Interface},
+					{"/sbin/ip", "/usr/sbin/ip", "/bin/ip", "link", "set", "dev", e.Interface, "mtu", "1354", "up"},
+				}
+			}
+			for _, command := range wantCommands {
+				if !slices.ContainsFunc(r.base.calls, func(call []string) bool { return slices.Equal(call, command) }) {
+					t.Fatalf("missing unnumbered command: %v calls=%v", command, r.base.calls)
+				}
+			}
 			link := r.links[e.Interface]
-			if link.local != e.LocalIP || link.peer != e.PeerIP || link.mtu != e.MTU {
+			wantPeer := netip.Addr{}
+			if platform == "darwin" {
+				wantPeer = e.LocalIP
+			}
+			if link.local != e.LocalIP || link.peer != wantPeer || link.mtu != e.MTU || j.PeerIP != j.LocalIP {
 				t.Fatalf("configuration mismatch: %+v", link)
 			}
 			calls := len(r.base.calls)
@@ -451,7 +467,11 @@ func TestNativeRoutesAndDNS(t *testing.T) {
 						t.Fatalf("repeated route add: %v", call)
 					}
 				}
-				if err := m.Teardown(context.Background(), j); err != nil || len(r.base.routes) != 2 || len(r.base.dns) != 0 {
+				wantRoutes := 1
+				if platform == "darwin" {
+					wantRoutes++
+				}
+				if err := m.Teardown(context.Background(), j); err != nil || len(r.base.routes) != wantRoutes || len(r.base.dns) != 0 {
 					t.Fatalf("native cleanup: %v %+v", err, r.base)
 				}
 			})

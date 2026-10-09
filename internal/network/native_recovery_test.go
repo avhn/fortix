@@ -12,6 +12,44 @@ import (
 	"github.com/avhn/fortix/internal/profile"
 )
 
+// TestNativeLegacyPeerJournalRecovery reconciles an older numbered native link whose
+// peer_ip differs from local_ip. Wire round trips retain the old peer, but cleanup uses
+// only link identity and local IP, leaving its kernel peer route and physical path intact.
+func TestNativeLegacyPeerJournalRecovery(t *testing.T) {
+	for _, platform := range []string{"darwin", "linux"} {
+		t.Run(platform, func(t *testing.T) {
+			m, r := nativeManager(t, platform)
+			p := nativeProfile("work")
+			p.DNS = profile.DNS{Mode: "split", Domains: []string{"corp.example.com"}}
+			e, j := configuredNative(t, m, p, 0)
+			legacyPeer := netip.MustParseAddr("10.99.0.1")
+			j.PeerIP = legacyPeer.String()
+			r.links[e.Interface].peer = legacyPeer
+			r.base.routes = slices.DeleteFunc(r.base.routes, func(route JournalRoute) bool { return route.Interface == e.Interface })
+			r.connectPeer(e.Interface)
+			baseline := slices.Clone(r.base.routes)
+			if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); err != nil {
+				t.Fatal(err)
+			}
+			legacy := journalSnapshot(t, j)
+			if legacy.PeerIP != legacyPeer.String() || legacy.PeerIP == legacy.LocalIP {
+				t.Fatalf("legacy wire metadata changed: %+v", legacy)
+			}
+			fresh := freshNativeManager(t, m)
+			for range 2 {
+				if err := fresh.Recover(context.Background(), legacy); err != nil || !slices.Equal(r.base.routes, baseline) || len(r.base.dns) != 0 {
+					t.Fatalf("legacy cleanup failed: %v routes=%+v", err, r.base.routes)
+				}
+			}
+			for _, file := range legacy.ResolverFiles {
+				if _, err := os.Stat(file.Path); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("legacy resolver survived cleanup: %v", err)
+				}
+			}
+		})
+	}
+}
+
 // TestNativeReusedLinkRecovery protects routes and DNS when a native name has been
 // reused, disappeared, or lost its recorded local IP. Independent resolver files still
 // reconcile by exact bytes; recovery never issues a link deletion command.
@@ -188,7 +226,7 @@ func TestNativeFullPushedDefaults(t *testing.T) {
 			e, j := configuredNative(t, m, p, 0)
 			e.PushedPrefixes = []netip.Prefix{netip.MustParsePrefix(cidr)}
 			j.GatewayIP = "203.0.113.5"
-			if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); err != nil || len(j.Routes) != 2 || len(r.base.routes) != 5 {
+			if err := m.Apply(context.Background(), p, e, &j, ignoreJournal); err != nil || len(j.Routes) != 2 || len(r.base.routes) != 4 {
 				t.Fatalf("full pushed default: %v %+v", err, j)
 			}
 		})
