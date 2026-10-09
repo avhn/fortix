@@ -418,11 +418,19 @@ func (r *runner) status(asJSON bool) error {
 		if !entry.Since.IsZero() {
 			since = entry.Since.Format(time.RFC3339)
 		}
-		if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n", entry.Profile, entry.State, entry.Interface, entry.LocalIP, since, entry.Detail); err != nil {
+		if _, err := fmt.Fprintf(table, "%s\t%s\t%s\t%s\t%s\t%s\n", entry.Profile, entry.State, dash(entry.Interface), dash(entry.LocalIP), since, entry.Detail); err != nil {
 			return err
 		}
 	}
 	return table.Flush()
+}
+
+// dash renders an empty status column as a hyphen so the table stays aligned and readable.
+func dash(value string) string {
+	if value == "" {
+		return "-"
+	}
+	return value
 }
 
 // password sets or clears only an OS keyring entry, never a profile file or helper secret.

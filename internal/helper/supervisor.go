@@ -141,13 +141,18 @@ func (a *supervisor) publish() {
 	if a.public.State != a.state.Phase {
 		since = time.Now().UTC()
 	}
-	ip := ""
-	if a.state.LocalIP.IsValid() {
-		ip = a.state.LocalIP.String()
+	idle := a.state.Phase == session.Disconnected || (a.state.Phase == session.Failed && a.state.Exited && a.state.Cleaned)
+	// An idle profile owns no link, so the last attempt's interface and address are not shown.
+	ip, link := "", ""
+	if !idle {
+		link = a.state.Interface
+		if a.state.LocalIP.IsValid() {
+			ip = a.state.LocalIP.String()
+		}
 	}
 	a.publicOrigin = a.origin
-	a.public = Status{Wanted: a.state.Wanted, CleanupPending: a.state.Phase == session.Failed && !a.state.Cleaned, Profile: a.state.Profile, State: a.state.Phase, Detail: a.state.Detail, Attempt: a.state.Attempt, Interface: a.state.Interface, LocalIP: ip, Since: since}
-	a.idleState = a.state.Phase == session.Disconnected || (a.state.Phase == session.Failed && a.state.Exited && a.state.Cleaned)
+	a.public = Status{Wanted: a.state.Wanted, CleanupPending: a.state.Phase == session.Failed && !a.state.Cleaned, Profile: a.state.Profile, State: a.state.Phase, Detail: a.state.Detail, Attempt: a.state.Attempt, Interface: link, LocalIP: ip, Since: since}
+	a.idleState = idle
 }
 
 // call sends one command and waits for acknowledgement or shutdown. Credential

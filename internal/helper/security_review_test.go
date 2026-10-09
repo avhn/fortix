@@ -275,3 +275,20 @@ func TestKernelMismatchStateCode(t *testing.T) {
 		t.Fatal("kernel mismatch installed a route")
 	}
 }
+
+// TestIdleStatusHidesLink keeps the last attempt's interface and address out of the
+// published status once a profile is idle, while a live attempt still reports them.
+func TestIdleStatusHidesLink(t *testing.T) {
+	s := &Server{clients: make(map[*connection]bool)}
+	a := newSupervisor(s, &profile.Profile{ID: "work"})
+	a.state.Phase, a.state.Interface, a.state.LocalIP = session.Connected, "utun7", netip.MustParseAddr("10.99.0.2")
+	a.publish()
+	if a.public.Interface != "utun7" || a.public.LocalIP != "10.99.0.2" {
+		t.Fatalf("live attempt lost its link: %+v", a.public)
+	}
+	a.state.Phase = session.Disconnected
+	a.publish()
+	if a.public.Interface != "" || a.public.LocalIP != "" {
+		t.Fatalf("idle profile kept a stale link: %+v", a.public)
+	}
+}
