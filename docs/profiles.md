@@ -35,7 +35,7 @@ paths have no schema fields and are rejected.
 | `schema_version` | Integer, exactly `1` | Required |
 | `id` | Lowercase ASCII letter/digit first, then letters/digits/hyphens, 1..63 characters | Required |
 | `name` | Valid UTF-8, 1..64 characters, no control characters | Required |
-| `backend` | Exactly `openfortivpn` | Required |
+| `backend` | `native` or `openfortivpn`; explicit native requires `mfa.mode: none` | `native` for MFA `none`, otherwise `openfortivpn` |
 | `gateway.host` | DNS hostname or unscoped IP literal; no URL scheme, path, or port suffix | Required |
 | `gateway.port` | Integer, 1..65535 | `443` when omitted or zero |
 | `realm` | At most 64 ASCII letters, digits, dots, underscores, or hyphens | Empty |
@@ -61,11 +61,36 @@ arrays, when their modes do not allow them. Non-TOTP modes forbid all TOTP
 parameters, including explicit zero values. `routes.preserve_lan: null` is
 invalid, not an instruction to use the default.
 
-### MFA behavior
+### Backend selection and MFA behavior
 
-`none` is appropriate for password-only accounts. An unexpected code challenge
-still gets a hidden prompt. `push` allows openfortivpn's FortiToken push path;
-other modes pass `--no-ftm-push`. The UI does not claim that a push was delivered.
+```mermaid
+flowchart TD
+    Profile[Schema version 1 profile] --> Explicit{Backend supplied?}
+    Explicit -->|yes| Keep[Keep explicit choice]
+    Keep --> Check[Reject native with MFA other than none]
+    Explicit -->|no| MFA{MFA mode}
+    MFA -->|none or omitted| Native[Native]
+    MFA -->|push, prompt, totp, static| External[openfortivpn]
+```
+
+Omitted `backend` resolves from MFA after defaults are applied. Explicit backend
+values in stored profiles are preserved, including an existing password-only
+`openfortivpn` choice. Schema version stays `1`; changing the default does not
+migrate explicit values. Edit an inactive profile or use the app's backend
+selector to change it. **Automatic** in the editor represents an omitted backend.
+Imports omit the backend to leave this decision to the final MFA configuration.
+
+Native supports only password authentication with `mfa.mode: none`, without
+openfortivpn or pppd. An unexpected second-factor challenge fails with an
+actionable instruction to use openfortivpn; it never prompts for native 2FA or
+silently resends credentials through a different backend. A missing optional
+executable also fails without fallback.
+
+For openfortivpn, `none` is appropriate for password-only accounts, though an
+unexpected code challenge still gets a hidden prompt. `push` allows its
+FortiToken push path; other modes pass `--no-ftm-push`. The UI does not claim
+that a push was delivered. macOS requires an explicitly installed root-owned
+openfortivpn copy for these modes; Linux uses trusted system binaries.
 
 `prompt`, `totp`, and `static` currently all use hidden code input when a code
 challenge arrives. TOTP generation and dedicated second-secret/seed keyring
@@ -75,38 +100,70 @@ by user preferences or CLI `--save`, not by a profile field.
 
 ### Routes and DNS behavior
 
-`custom` disables openfortivpn route installation and installs only included
-IPv4 prefixes on the tunnel link. `gateway` and `full` enable openfortivpn's
-route handling, but `gateway` rejects default and split-default routes pushed
-on its own tunnel link. Use `full` to allow those routes. `full` does not
-independently synthesize a default route if
-the gateway does not provide one. Only one full tunnel can be reserved at once.
+```mermaid
+flowchart LR
+    Link[Verified tunnel link] --> Policy[Select and check IPv4 policy]
+    Policy --> Routes[Install or observe owned routes]
+    Routes --> DNS[Split DNS for listed domains only]
+    DNS --> Ready[Connected]
+```
 
-`preserve_lan` is accepted and defaults to true but does not yet add LAN bypass
-routes. Existing connected routes remain intact under custom routing; pushed
-routes and full-tunnel behavior depend on the gateway and platform. Do not
-assume this field alone guarantees LAN reachability.
+| Route mode | Native | openfortivpn |
+| --- | --- | --- |
+| `custom` | Install only `routes.include`, ignoring pushed route intent | Disable upstream route installation; helper installs only included prefixes |
+| `gateway` | Install pushed split routes; reject `/0` and either `/1` | Observe upstream-installed routes and reject defaults on the tunnel link |
+| `full` | Use pushed routes; if splits are absent or defaults are pushed, normalize to two owned `/1` routes | Permit upstream default/split-default handling; no helper-synthesized native fallback |
 
-Openfortivpn and PPP DNS writers are disabled in all modes. With `split`, the
-helper uses negotiated DNS servers: owned `/etc/resolver/<domain>` files on
-macOS, and per-link `resolvectl dns`/`domain` settings on Linux. On macOS a
-domain already owned by another profile is a conflict. `none` leaves DNS
-unmanaged; it does not prevent other applications or the OS from resolving
-names. IPv6 VPN routing and universal leak prevention are not supported.
+Native full-mode fallback installs `0.0.0.0/1` and `128.0.0.0/1` without replacing
+the physical default. A host-route exception keeps the actual TLS gateway IPv4
+address reachable through its physical next hop. Full fallback fails safely
+when that IPv4 exception cannot be established. With only non-default split
+routes present, native `full` keeps those routes; the mode alone does not force
+all IPv4 traffic through the VPN. Only one full tunnel can be reserved at once.
+
+Native registers its link identity before configuring it and reserves selected
+routes before route mutation. Duplicate local addresses, overlapping reservations,
+connected subnets, and competing live routes are refused. Openfortivpn may add
+pushed routes before inspection; typed failures from both stdout and stderr,
+including an existing-route clash, prevent reporting that attempt as connected.
+Do not assume these checks eliminate every transient change or a race with
+another network manager.
+
+`preserve_lan` is accepted and defaults to true but does not add LAN bypass
+routes. More-specific physical routes can remain effective under the native
+`/1` fallback; this is route precedence, not an implemented guarantee from the
+field. Custom routing is the most predictable option for local-network access.
+
+With `split`, the helper uses negotiated IPv4 DNS servers, with XML fallback
+for native if IPCP does not supply DNS. It configures only `dns.domains`:
+gateway-advertised suffixes are metadata and do not automatically expand policy.
+On macOS it owns `/etc/resolver/<domain>` files, refusing foreign files or a
+domain already owned by another profile. Linux uses per-link `resolvectl dns`
+and routing-only domains (`~domain`), not a global `~.` domain. Linux
+requires working systemd-resolved and resolvectl; there is no resolvconf fallback.
+
+Openfortivpn and pppd DNS writers are disabled in all modes. `none` leaves DNS
+unmanaged. A full IPv4 route does not make split DNS global, and neither mode
+prevents other applications or the OS from resolving names elsewhere. IPv6 VPN
+routing and universal leak prevention are not supported.
 
 ## Examples
 
-### Password-only custom routing and split DNS
+All example hosts/domains are reserved placeholders and private CIDRs are
+illustrative, not live configuration. Replace them and `YOUR_VPN_USERNAME` with
+administrator-provided settings. Never put passwords, seeds, or codes in JSON.
+
+### Native password-only custom routing and split DNS
 
 ```json
 {
   "schema_version": 1,
   "id": "work",
   "name": "Work",
-  "backend": "openfortivpn",
+  "backend": "native",
   "gateway": { "host": "vpn.example.com", "port": 10443 },
   "realm": "staff",
-  "username": "jane.doe",
+  "username": "YOUR_VPN_USERNAME",
   "mfa": { "mode": "none" },
   "routes": {
     "mode": "custom",
@@ -117,16 +174,15 @@ names. IPv6 VPN routing and universal leak prevention are not supported.
 }
 ```
 
-### Minimal gateway-routing profile
+### Minimal gateway-routing profile (defaults to native)
 
 ```json
 {
   "schema_version": 1,
   "id": "work",
   "name": "Work",
-  "backend": "openfortivpn",
   "gateway": { "host": "vpn.example.com" },
-  "username": "jane.doe"
+  "username": "YOUR_VPN_USERNAME"
 }
 ```
 
@@ -139,7 +195,7 @@ names. IPv6 VPN routing and universal leak prevention are not supported.
   "name": "Work",
   "backend": "openfortivpn",
   "gateway": { "host": "vpn.example.com", "port": 443 },
-  "username": "jane.doe",
+  "username": "YOUR_VPN_USERNAME",
   "mfa": { "mode": "push" },
   "routes": { "mode": "full", "preserve_lan": true },
   "dns": { "mode": "none" }
@@ -148,16 +204,28 @@ names. IPv6 VPN routing and universal leak prevention are not supported.
 
 ## Certificate trust and import
 
-A successful system-certificate check needs no explicit pin. If certificate
-validation fails, fortix displays the captured digest, subject, and issuer.
-Verify those with the VPN administrator before confirming. `fortix trust <id>`
-or the tray's confirmation sends the captured digest back to the helper. The
-helper accepts only its last rejected digest for that profile, stores it as
-`trusted_cert`, and immediately starts a new attempt. A changed certificate
-requires a new confirmation. `profile add` preserves the existing helper-owned
-pin and ignores any submitted `trusted_cert`; it cannot set or replace a pin.
-Removing a profile and adding it again clears its stored pin.
+Trust accepts **either** a valid system certificate chain plus hostname **or**
+a matching SHA-256 digest of the leaf certificate's DER bytes. The pin is not a
+public-key hash and is not an extra restriction on otherwise valid PKI. A
+matching pin can accept a certificate whose hostname, expiry, or chain fails
+normal validation, so independently verifying the digest is essential. Native
+applies the same TLS 1.2-or-later verifier to login, config/tunnel, and logout;
+credentials are not sent before the login connection is verified.
+
+If neither trust path succeeds, fortix displays the captured digest, subject,
+and issuer. Verify those with the VPN administrator before confirming.
+`fortix trust <id>` or the desktop confirmation sends the captured digest back
+to the helper. Only the initiating UID or root may confirm it. The helper accepts
+only its last rejected digest for that profile, stores `trusted_cert`, and starts
+a new attempt. A changed certificate that still fails PKI requires confirmation
+of its new digest; an otherwise valid certificate needs no pin confirmation.
+
+`profile add` preserves the helper-owned pin only when the gateway host and port
+are unchanged and ignores submitted `trusted_cert`; it cannot set or replace
+a pin. Changing the endpoint, or removing and re-adding a profile, clears it.
 
 `fortix import forticlient [--plist path]` previews non-secret drafts read from
 FortiClient's macOS plist. `--apply` stores the displayed drafts. Import does
 not decrypt or copy saved FortiClient passwords and never modifies its source.
+Review MFA, route mode, and split domains before applying a draft; import cannot
+infer every gateway authentication requirement. It imports no certificate trust.
