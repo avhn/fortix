@@ -14,11 +14,12 @@ import (
 	"strings"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/profile"
 	"github.com/avhn/fortix/internal/tun"
 	"github.com/avhn/fortix/internal/winfs"
-	"golang.org/x/sys/windows"
 )
 
 const journalVersion = 1

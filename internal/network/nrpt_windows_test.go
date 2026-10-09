@@ -16,8 +16,9 @@ import (
 	"time"
 	"unicode/utf16"
 
-	"github.com/avhn/fortix/internal/session"
 	"golang.org/x/sys/windows"
+
+	"github.com/avhn/fortix/internal/session"
 )
 
 // fakeNRPTRunner models the typed script contract, including the final ownership recheck.

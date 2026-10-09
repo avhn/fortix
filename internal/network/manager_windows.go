@@ -9,11 +9,12 @@ import (
 	"slices"
 	"sync"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/paths"
 	"github.com/avhn/fortix/internal/profile"
 	"github.com/avhn/fortix/internal/session"
-	"golang.org/x/sys/windows"
 )
 
 // Runner preserves the helper's injection surface; Windows routes never invoke generic commands.

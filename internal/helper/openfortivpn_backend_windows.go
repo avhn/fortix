@@ -3,6 +3,7 @@ package helper
 import (
 	"context"
 	"errors"
+
 	"github.com/avhn/fortix/internal/backend"
 )
 

@@ -12,11 +12,12 @@ import (
 	"testing"
 	"unsafe"
 
+	"golang.org/x/sys/windows"
+
 	"github.com/avhn/fortix/internal/backend"
 	"github.com/avhn/fortix/internal/profile"
 	"github.com/avhn/fortix/internal/session"
 	"github.com/avhn/fortix/internal/tun"
-	"golang.org/x/sys/windows"
 )
 
 // SDK layout assertions are compile-time gates on both Windows amd64 and arm64.
