@@ -1,3 +1,5 @@
+//go:build darwin || linux
+
 // Package helper owns authenticated local control, child lifecycles, and private
 // credential forwarding. Privileged paths and network work are injectable for tests.
 package helper

@@ -1,5 +1,3 @@
-//go:build darwin || linux
-
 package helper
 
 import (
@@ -18,8 +16,8 @@ import (
 // TestNativeDiagnosticRedaction verifies native terminal messages use the same
 // known-secret, cookie-label and control filtering as external process output.
 func TestNativeDiagnosticRedaction(t *testing.T) {
-	dir := t.TempDir()
-	log, err := openLog(dir, "work")
+	dir := windowsTestDirectory(t)
+	log, err := openLogAt(dir, "work")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +25,7 @@ func TestNativeDiagnosticRedaction(t *testing.T) {
 	log.protect([]byte("fixture-private-password"))
 	a := supervisor{id: "work", server: &Server{}}
 	a.nativeDiagnostic(log, 1, "terminal error: fixture-private-password\nSVPNCOOKIE=fixture-cookie")
-	data, err := os.ReadFile(filepath.Join(dir, "work.log"))
+	data, err := os.ReadFile(filepath.Join(dir.path, "work.log"))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,24 +1,13 @@
-//go:build darwin || linux
-
 package helper
 
 import (
-	"bufio"
 	"errors"
 	"io"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
-
-	"golang.org/x/sys/unix"
-
-	"github.com/avhn/fortix/internal/openfortivpn"
-	"github.com/avhn/fortix/internal/protocol"
-	"github.com/avhn/fortix/internal/session"
 )
 
 // logSize caps each of three retained log files, including the active file.
@@ -28,7 +17,7 @@ const logSize = 1024 * 1024
 // The containing directory is private and checked before the helper starts.
 type rotatingLog struct {
 	mu      sync.Mutex
-	dir     *os.File
+	dir     *helperDirectory
 	name    string
 	file    *os.File
 	size    int64
@@ -55,12 +44,12 @@ func openLog(dir, id string) (*rotatingLog, error) {
 
 // openLogAt opens a private profile log within the server's pinned directory. The
 // caller retains the directory handle until all log writers have stopped.
-func openLogAt(dir *os.File, id string) (*rotatingLog, error) {
+func openLogAt(dir *helperDirectory, id string) (*rotatingLog, error) {
 	if !ValidID(id) {
 		return nil, errors.New("invalid log id")
 	}
 	name := id + ".log"
-	f, err := privateFileAt(dir, name, unix.O_WRONLY|unix.O_APPEND|unix.O_CREAT)
+	f, err := privateFileAt(dir, name, os.O_WRONLY|os.O_APPEND|os.O_CREATE)
 	if err != nil {
 		return nil, err
 	}
@@ -101,13 +90,13 @@ func (l *rotatingLog) write(line string) error {
 		if err := l.file.Close(); err != nil {
 			return err
 		}
-		if err := unix.Renameat(int(l.dir.Fd()), l.name+".1", int(l.dir.Fd()), l.name+".2"); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err := renamePrivateAt(l.dir, l.name+".1", l.name+".2"); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
-		if err := unix.Renameat(int(l.dir.Fd()), l.name, int(l.dir.Fd()), l.name+".1"); err != nil {
+		if err := renamePrivateAt(l.dir, l.name, l.name+".1"); err != nil {
 			return err
 		}
-		f, err := privateFileAt(l.dir, l.name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL)
+		f, err := privateFileAt(l.dir, l.name, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
 		if err != nil {
 			return err
 		}
@@ -179,87 +168,6 @@ func (l *rotatingLog) redact(line string) string {
 	return line
 }
 
-// drainAndWait drains both child pipes and reaps exactly one process. Exit is queued
-// only after stdout observations, so buffered authentication/certificate failures
-// cannot be mistaken for a transport reconnect. Leaked pipe holders get a short
-// drain deadline after the leader exits rather than holding cleanup indefinitely.
-func (a *supervisor) drainAndWait(cmd *exec.Cmd, stdout, stderr *os.File, attempt uint64, log *rotatingLog) {
-	defer func() { _ = stdout.Close(); _ = stderr.Close() }()
-	var drains sync.WaitGroup
-	drains.Add(2)
-	go func() { defer drains.Done(); a.scanOutput(stdout, attempt, log, true) }()
-	go func() { defer drains.Done(); a.scanOutput(stderr, attempt, log, false) }()
-	// Keep the leader unreaped until its group is killed: its PID cannot be reused
-	// while it remains our child, even after entering the zombie state.
-	if waitChild(cmd.Process.Pid) {
-		_ = unix.Kill(-cmd.Process.Pid, unix.SIGKILL)
-	}
-	err := cmd.Wait()
-	_ = stdout.SetReadDeadline(time.Now().Add(time.Second))
-	_ = stderr.SetReadDeadline(time.Now().Add(time.Second))
-	drains.Wait()
-	code := 0
-	if err != nil {
-		code = 1
-	}
-	a.send(session.Event{Profile: a.id, Attempt: attempt, Kind: session.ProcessExited, ExitCode: code, Jitter: 0.5})
-}
-
-// waitUntilFinished retains the child's reserved PID until inspection confirms exit
-// or absence. Transient kernel/procfs errors are retried, never used to kill a tunnel.
-// It returns true only while a confirmed zombie reserves the PID for group signalling.
-// The injected inspector and interval allow deterministic failure-path tests.
-func waitUntilFinished(pid int, inspect func(int) (bool, error), interval time.Duration) bool {
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		exited, err := inspect(pid)
-		if err == nil && exited {
-			return true
-		}
-		if errors.Is(err, unix.ESRCH) || errors.Is(err, os.ErrNotExist) {
-			// Absence no longer reserves the PID and cannot authorize a group signal.
-			return false
-		}
-		<-ticker.C
-	}
-}
-
-// scanOutput parses bounded stdout records and route failures from either stream.
-// Other stderr text remains diagnostic only. Overlong lines fail the attempt;
-// scanner errors contain no input bytes. Parser state is isolated per stream.
-func (a *supervisor) scanOutput(r io.Reader, attempt uint64, log *rotatingLog, stdout bool) {
-	scanner := bufio.NewScanner(r)
-	scanner.Buffer(make([]byte, 4096), protocol.MaxLine+1)
-	parser := openfortivpn.Parser{}
-	emit := func(event openfortivpn.Event) {
-		a.send(session.Event{Profile: a.id, Attempt: attempt, Kind: session.Output, Observation: event, Jitter: 0.5})
-	}
-	for scanner.Scan() {
-		line := log.redact(scanner.Text())
-		if err := log.write(line); err != nil {
-			a.send(session.Event{Profile: a.id, Attempt: attempt, Kind: session.AttemptFailed})
-			return
-		}
-		a.server.emit(protocol.Event{Type: "log", Profile: a.id, Attempt: attempt, Line: line}, nil)
-		for _, event := range parser.Parse(scanner.Text()) {
-			// Route-tool stderr can report failure even when the child exits successfully.
-			_, routeFailure := event.(openfortivpn.RouteRejected)
-			if stdout || routeFailure {
-				emit(event)
-			}
-		}
-	}
-	if stdout {
-		for _, event := range parser.Flush() {
-			emit(event)
-		}
-	}
-	if scanner.Err() != nil {
-		a.send(session.Event{Profile: a.id, Attempt: attempt, Kind: session.AttemptFailed})
-	}
-}
-
 // readLogs returns the last requested lines across at most three bounded files.
 // It refuses links, oversized files, and unsafe modes instead of exposing arbitrary
 // data. Concurrent rotation may omit an old file, but cannot escape the log directory.
@@ -274,13 +182,13 @@ func readLogs(dir, id string, count int) ([]string, error) {
 
 // readLogsAt reads a bounded tail relative to the held log directory, so parent
 // renames cannot redirect reads. Missing rotated files are harmless during rotation.
-func readLogsAt(dir *os.File, id string, count int) ([]string, error) {
+func readLogsAt(dir *helperDirectory, id string, count int) ([]string, error) {
 	if !ValidID(id) || count < 1 || count > 500 {
 		return nil, errors.New("invalid log request")
 	}
 	lines := make([]string, 0, count)
 	for _, suffix := range []string{".2", ".1", ""} {
-		f, err := privateFileAt(dir, id+".log"+suffix, unix.O_RDONLY)
+		f, err := privateFileAt(dir, id+".log"+suffix, os.O_RDONLY)
 		if errors.Is(err, os.ErrNotExist) {
 			continue
 		}
