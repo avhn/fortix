@@ -201,8 +201,8 @@ func (m *Manager) applyResolvers(ctx context.Context, p *profile.Profile, effect
 	return nil
 }
 
-// installResolver durably publishes complete bytes with an atomic no-replace link.
-// The private temporary file is removed on every path; racing existing files survive.
+// installResolver durably publishes complete bytes with an atomic no-replace rename.
+// The private temporary file is removed on every failure path; racing existing files survive.
 func installResolver(dir *os.File, name, temp string, data []byte) error {
 	fd, err := unix.Openat(int(dir.Fd()), temp, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0600)
 	if err != nil {
@@ -219,10 +219,7 @@ func installResolver(dir *os.File, name, temp string, data []byte) error {
 	if err := file.Sync(); err != nil {
 		return err
 	}
-	if err := unix.Linkat(int(dir.Fd()), temp, int(dir.Fd()), name, 0); err != nil {
-		return err
-	}
-	if err := unix.Unlinkat(int(dir.Fd()), temp, 0); err != nil {
+	if err := renameNoReplace(int(dir.Fd()), temp, name); err != nil {
 		return err
 	}
 	return dir.Sync()
