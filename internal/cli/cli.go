@@ -100,7 +100,7 @@ func validateFile(path string, stdout, stderr io.Writer) int {
 // usage writes the supported syntax to stderr and returns usage status 2.
 // Output failures cannot change the usage status because no command was executed.
 func usage(stderr io.Writer) int {
-	_, _ = fmt.Fprintln(stderr, "usage: fortix <command>\n  version\n  profile validate|list|show|add|rm|remove\n  import forticlient\n  password set|clear <id>\n  up <id>...|--all\n  down <id>...|--all\n  status [--json]\n  logs <id>\n  trust <id>")
+	_, _ = fmt.Fprintln(stderr, "usage: fortix <command>\n  version\n  profile validate|list|show|add|rm|remove|export|import\n  import forticlient\n  password set|clear <id>\n  up <id>...|--all\n  down <id>...|--all\n  status [--json]\n  logs <id>\n  trust <id>")
 	return 2
 }
 

@@ -224,6 +224,46 @@ of its new digest; an otherwise valid certificate needs no pin confirmation.
 are unchanged and ignores submitted `trusted_cert`; it cannot set or replace
 a pin. Changing the endpoint, or removing and re-adding a profile, clears it.
 
+### Shared profile commands
+
+```mermaid
+flowchart LR
+    Stored[Stored profiles] --> Export[profile export]
+    Export --> Shared[Secret-free shared JSON]
+    Shared --> Import[profile import]
+    Import --> Complete[Complete or merge and validate]
+    Complete --> Consent[Confirm any shared pin]
+    Consent --> Helper[Helper profile.put]
+```
+
+`fortix profile export <id>... [-o FILE] [--force]` exports one or more stored
+profiles in order. The versioned shared document contains neither usernames nor
+passwords. Without `-o`, JSON goes to stdout. Output files are created with mode
+`0644`, subject to the process umask; an existing file is refused unless `--force`
+is explicit.
+
+`fortix profile import FILE [--username NAME] [--id ID] [--name NAME] [--merge ID] [--yes]`
+reads shared JSON, or stdin when FILE is `-`. Multi-profile documents import every
+entry. `--id`, `--name`, and `--merge` are limited to single-profile documents.
+New profiles use the shared ID and name unless overridden. On a terminal, missing
+required fields are prompted; noninteractive imports list omissions and fail.
+The username is supplied locally through `--username` or a prompt. Stdin documents
+cannot also supply interactive completion or consent.
+
+An existing ID is refused without `--merge ID`. Merge overlays supplied fields
+onto the selected stored profile, keeps that profile's ID and username, and
+replaces supplied route and DNS lists rather than appending. All entries are
+validated and checked for existing IDs before the first save. Helper write failures
+stop further saves; a multi-profile import is not an atomic transaction.
+
+A nonempty shared `trusted_cert` is displayed before saving. Verify the pin and
+sender independently, then confirm with the default-No terminal prompt or `--yes`
+for noninteractive use. Shared import uses the same helper save operation as
+`profile add`, so submitted pins are ignored and cannot establish certificate
+trust; `fortix trust <id>` remains the trust path. Import never prompts for or
+stores a password. After importing, `fortix up <id>` asks for it when needed,
+and `fortix up <id> --save` can save it to the keychain after a successful connection.
+
 `fortix import forticlient [--plist path]` previews non-secret drafts read from
 FortiClient's macOS plist. `--apply` stores the displayed drafts. Import does
 not decrypt or copy saved FortiClient passwords and never modifies its source.

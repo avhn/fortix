@@ -41,15 +41,18 @@ type Options struct {
 	Prompt    Prompter
 	Config    *userconfig.Config
 	Converter importer.Converter
+	Input     *os.File // Input supplies shared JSON and completion fields; nil uses stdin.
 }
 
 // command holds validated CLI syntax and non-secret option values for one invocation.
 type command struct {
-	name                        string
-	ids                         []string
-	all, json, save, yes, apply bool
-	plist                       string
-	lines                       int
+	name                                      string
+	ids                                       []string
+	all, json, save, yes, apply               bool
+	plist                                     string
+	output, username, id, nameOverride, merge string
+	force                                     bool
+	lines                                     int
 }
 
 // errFlagParse marks syntax errors already diagnosed by the command flag set.
@@ -99,7 +102,7 @@ func RunContext(ctx context.Context, args []string, stdout, stderr io.Writer, op
 		r.options.Secrets = secrets.Keyring{}
 	}
 	if r.options.Prompt == nil {
-		r.options.Prompt = prompt.Terminal{Output: stderr}
+		r.options.Prompt = prompt.Terminal{Input: options.Input, Output: stderr}
 	}
 	if err := r.execute(cmd); err != nil {
 		return diagnostic(stderr, err)
@@ -152,6 +155,18 @@ func parseCommand(args []string, output, helpOutput io.Writer) (command, error) 
 	case "profile show", "profile rm", "password set", "password clear":
 	case "profile add":
 		syntax = "<file>"
+	case "profile export":
+		count = -1
+		syntax = "<id>... [-o FILE] [--force]"
+		fs.StringVar(&c.output, "o", "", "write shared JSON to FILE instead of stdout")
+		fs.BoolVar(&c.force, "force", false, "replace an existing export file")
+	case "profile import":
+		syntax = "FILE [--username NAME] [--id ID] [--name NAME] [--merge ID] [--yes]"
+		fs.StringVar(&c.username, "username", "", "personal username for new profiles")
+		fs.StringVar(&c.id, "id", "", "override the single shared profile id")
+		fs.StringVar(&c.nameOverride, "name", "", "override the single shared profile name")
+		fs.StringVar(&c.merge, "merge", "", "merge into an existing profile, keeping its username")
+		fs.BoolVar(&c.yes, "yes", false, "confirm displayed shared certificate pins without prompting")
 	case "logs":
 		fs.IntVar(&c.lines, "lines", 100, "number of redacted lines (1 to 500)")
 	case "trust":
@@ -194,6 +209,12 @@ func parseCommand(args []string, output, helpOutput io.Writer) (command, error) 
 	}
 	if count == -1 && ((c.all && len(c.ids) != 0) || (!c.all && len(c.ids) == 0)) {
 		return c, errors.New("choose ids or --all")
+	}
+	if (c.id != "" && !profile.ValidID(c.id)) || (c.merge != "" && !profile.ValidID(c.merge)) {
+		return c, errors.New("invalid import profile id")
+	}
+	if c.merge != "" && c.id != "" && c.id != c.merge {
+		return c, errors.New("--id must match --merge")
 	}
 	if c.lines < 1 || c.lines > 500 {
 		return c, errors.New("lines must be between 1 and 500")
@@ -274,6 +295,9 @@ func (r *runner) execute(c command) error {
 	if c.name == "import forticlient" {
 		return r.importProfiles(c)
 	}
+	if c.name == "profile import" {
+		return r.importShared(c)
+	}
 	// Decode before dialing so malformed local files are reported even when the helper is offline.
 	var data json.RawMessage
 	if c.name == "profile add" {
@@ -308,6 +332,8 @@ func (r *runner) execute(c command) error {
 			}
 		}
 		return nil
+	case "profile export":
+		return r.exportShared(c)
 	case "profile show":
 		var p json.RawMessage
 		if err := r.call(protocol.Request{Op: "profile.get", Profile: c.ids[0]}, &p); err != nil {

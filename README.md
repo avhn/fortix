@@ -223,6 +223,8 @@ use openfortivpn. Disconnect, edit the inactive profile, and reconnect explicitl
 | `fortix profile list` | List stored profile IDs and states |
 | `fortix profile show <id>` | Show stored JSON |
 | `fortix profile add <file>` | Validate and store through the helper |
+| `fortix profile export <id>... [-o FILE] [--force]` | Export shared JSON without usernames or passwords; refuse existing output files unless forced |
+| `fortix profile import FILE [--username NAME] [--id ID] [--name NAME] [--merge ID] [--yes]` | Complete shared drafts or merge into an existing profile, keeping its username |
 | `fortix profile rm <id>` or `fortix profile remove <id>` | Remove an inactive profile |
 | `fortix import forticlient [--plist path] [--apply]` | Preview non-secret drafts; optionally store them |
 | `fortix password set\|clear <id>` | Store a hidden password in, or remove it from, the keyring |
@@ -231,6 +233,15 @@ use openfortivpn. Disconnect, edit the inactive profile, and reconnect explicitl
 | `fortix status [--json]` | Show the helper's current snapshot |
 | `fortix logs <id> [--lines 1..500]` | Print bounded, redacted diagnostics |
 | `fortix trust <id> [--yes]` | Capture rejected certificate identity, confirm trust, and connect |
+
+Shared import accepts `-` for stdin and imports every profile in a file.
+`--id`, `--name`, and `--merge` require a single-profile file. New IDs must not
+already exist. Missing fields are prompted only on a terminal; otherwise supply
+complete shared configuration and `--username`. Import never asks for a password.
+Run `fortix up <id> --save` afterward to connect and optionally save it to the keychain.
+Shared pins are displayed and require confirmation, or `--yes` noninteractively.
+Verify the sender and pin independently. The helper ignores submitted pins on
+import, just as with `profile add`; use `fortix trust <id>` to establish trust.
 
 Use `--help` for command-specific flags. `--yes` skips the confirmation prompt;
 it does not bypass the helper's captured-digest check. Passwords are saved only
