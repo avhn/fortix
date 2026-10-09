@@ -145,6 +145,16 @@ sed 's/fortix_0.2.0_/fortix_0.2.0+build.1_/g' "${STAGING}/complete assets/checks
 "${REPO_ROOT}/scripts/render-homebrew.sh" 0.2.0+build.1 "${STAGING}/metadata-checksum" "${STAGING}/metadata tap"
 grep -Fq '/v0.2.0+build.1/fortix_0.2.0+build.1_darwin_arm64.dmg' "${STAGING}/metadata tap/Casks/fortix.rb"
 
+# The site pages render for a valid fingerprint, carry it, and leave apt files alone.
+expect_failure 'usage:' "${REPO_ROOT}/scripts/build-pages-index.sh"
+expect_failure 'invalid signing key fingerprint' "${REPO_ROOT}/scripts/build-pages-index.sh" "${STAGING}" unsafe
+mkdir -p "${STAGING}/site/apt"
+printf 'retained\n' >"${STAGING}/site/apt/Release"
+"${REPO_ROOT}/scripts/build-pages-index.sh" "${STAGING}/site" 7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06
+grep -Fq 'test "$FINGERPRINT" = 7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06' "${STAGING}/site/index.html"
+grep -Fq '<code>7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06</code>' "${STAGING}/site/apt/index.html"
+[[ "$(cat "${STAGING}/site/apt/Release")" == retained ]]
+
 expect_failure 'usage:' "${REPO_ROOT}/scripts/build-apt-repo.sh"
 expect_failure 'invalid signing key fingerprint' "${REPO_ROOT}/scripts/build-apt-repo.sh" "${STAGING}" "${STAGING}/invalid apt" unsafe
 if command -v apt-ftparchive >/dev/null && command -v gpg >/dev/null && command -v dpkg-deb >/dev/null; then

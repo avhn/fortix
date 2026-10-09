@@ -100,6 +100,16 @@ other build and tap jobs retain read-only repository access. The release
 publisher separately needs `contents: write` for release creation. The tap uses
 only its repository-specific deploy key for writes.
 
+The `apt` job also writes two plain pages with `scripts/build-pages-index.sh`:
+the site root and `apt/index.html`, which repeat the install steps and the key
+fingerprint. apt never requests them; they keep a person who opens either
+address from landing on a 404. To refresh those pages without a release, run
+the **Pages** workflow manually from `main` (`gh workflow run pages.yml --ref
+main`). It rebuilds only the two pages on the retained `gh-pages` branch,
+redeploys, and shares the `apt` job's concurrency group so the two never
+deploy at once. The `github-pages` environment must allow `main` as well as
+release tags.
+
 ### Homebrew installation
 
 ```sh

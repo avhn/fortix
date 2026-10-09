@@ -1,0 +1,77 @@
+name: Pages
+
+# Rebuilds the site pages around the retained apt repository and redeploys Pages
+# without cutting a release. Release runs refresh the same pages on every tag.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  pages:
+    if: github.repository == 'avhn/fortix' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # Shared with the release apt job so two deployments never overwrite each other.
+    concurrency:
+      group: fortix-apt-repository
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Rebuild the site pages on the retained Pages branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_TERMINAL_PROMPT: "0"
+        run: |
+          set +x
+          EXPECTED=7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06
+          # HTTP authentication is held in environment configuration, not remote URLs.
+          export GIT_CONFIG_COUNT=1
+          export GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w 0)"
+          export GIT_CONFIG_VALUE_0
+          PAGES="$(mktemp -d "${RUNNER_TEMP}/fortix-pages.XXXXXX")"
+          git -C "$PAGES" init
+          git -C "$PAGES" remote add origin https://github.com/avhn/fortix.git
+          # Without a published apt repository there is nothing to redeploy around.
+          git -C "$PAGES" fetch --depth 1 origin gh-pages
+          git -C "$PAGES" checkout -b gh-pages FETCH_HEAD
+          # Pages archiving dereferences links, so reject them across retained site content.
+          if [[ -n "$(find "$PAGES" -type l -print -quit)" ]]; then
+            printf '%s\n' 'Retained Pages repository contains a symlink.' >&2
+            exit 1
+          fi
+          test -f "$PAGES/apt/dists/stable/InRelease"
+          scripts/build-pages-index.sh "$PAGES" "$EXPECTED"
+          git -C "$PAGES" config user.name 'fortix-release[bot]'
+          git -C "$PAGES" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C "$PAGES" add index.html apt/index.html
+          if ! git -C "$PAGES" diff --cached --quiet; then
+            git -C "$PAGES" commit -m "fortix site pages"
+            git -C "$PAGES" push origin HEAD:gh-pages
+          fi
+          printf 'PAGES_DIRECTORY=%s\n' "$PAGES" >> "$GITHUB_ENV"
+      - name: Upload the retained Pages repository
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        with:
+          path: ${{ env.PAGES_DIRECTORY }}
+          name: fortix-pages-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Deploy the site to Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+        with:
+          artifact_name: fortix-pages-${{ github.run_id }}-${{ github.run_attempt }}

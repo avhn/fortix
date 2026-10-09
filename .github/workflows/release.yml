@@ -282,10 +282,11 @@ jobs:
           DEBS="$(mktemp -d "${RUNNER_TEMP}/fortix-apt-debs.XXXXXX")"
           cp "$RELEASE_ARTIFACTS"/*.deb "$DEBS/"
           scripts/build-apt-repo.sh "$DEBS" "$PAGES/apt" "$EXPECTED"
+          scripts/build-pages-index.sh "$PAGES" "$EXPECTED"
           touch "$PAGES/.nojekyll"
           git -C "$PAGES" config user.name 'fortix-release[bot]'
           git -C "$PAGES" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git -C "$PAGES" add apt .nojekyll
+          git -C "$PAGES" add index.html apt .nojekyll
           if ! git -C "$PAGES" diff --cached --quiet; then
             git -C "$PAGES" commit -m "fortix ${RELEASE_TAG#v} apt repository"
             git -C "$PAGES" push origin HEAD:gh-pages
