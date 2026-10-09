@@ -33,7 +33,8 @@ var ALLOWED_CHANGED = map[string]bool{"packaging/macos/AppIcon.icns": true, "pac
 var ALLOWED_PATHS = []string{
 	"docs/windows.md", "docs/release.md", "assets/icon/art.py", "docs/assets/readme-header.png",
 	"packaging/macos/AppIcon.icns", "packaging/macos/Assets.car", "scripts/check-unix-unchanged.sh",
-	"scripts/render-winget.sh", "scripts/verify-release-assets.sh", "scripts/release-checksums.sh",
+	"scripts/render-winget.sh", "scripts/package-windows.sh", "scripts/sign-windows.sh",
+	"scripts/verify-release-assets.sh", "scripts/release-checksums.sh",
 	"scripts/test-packaging.sh", ".github/workflows/windows.yml",
 	".github/workflows/unix-unchanged.yml", ".github/workflows/release.yml",
 }

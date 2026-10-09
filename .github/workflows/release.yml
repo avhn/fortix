@@ -93,8 +93,88 @@ jobs:
             dist/*.dmg
             dist/*.app.zip
 
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      GOOS: windows
+      GOARCH: amd64
+      CGO_ENABLED: "0"
+      RELEASE_TAG: ${{ github.ref_name }}
+      HAS_WINDOWS_SIGNING_CERT: ${{ secrets.WINDOWS_SIGNING_CERT != '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # Preserve source notice bytes and executable Bash scripts on Windows.
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: "false"
+        with:
+          persist-credentials: false
+      - name: Require Windows app release project
+        shell: pwsh
+        run: |
+          if (!(Test-Path windows/Fortix.App/Fortix.App.csproj -PathType Leaf)) {
+            throw 'Windows release requires windows/Fortix.App/Fortix.App.csproj. Do not tag until the app project is present with AssemblyName=FortixApp.'
+          }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          global-json-file: windows/global.json
+      - name: Build versioned Windows CLI, helper and self-contained app
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          STAGE="$(mktemp -d "$(cygpath -u "$RUNNER_TEMP")/fortix-release.XXXXXX")"
+          printf 'FORTIX_STAGE=%s\n' "$(cygpath -w "$STAGE")" >> "$GITHUB_ENV"
+          # Populate licenses offline packaging needs, including the Unix Go notice inputs.
+          go mod download
+          LDFLAGS="-s -w -X github.com/avhn/fortix/internal/buildinfo.Version=$VERSION"
+          go build -trimpath -buildvcs=false -ldflags "$LDFLAGS" -o "$STAGE/fortix.exe" ./cmd/fortix
+          go build -trimpath -buildvcs=false -ldflags "$LDFLAGS" -o "$STAGE/fortix-helper.exe" ./cmd/fortix-helper
+          dotnet publish windows/Fortix.App -c Release -r win-x64 -p:Version="$VERSION" -m:1 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -o "$STAGE/app"
+          if [[ ! -f "$STAGE/app/FortixApp.exe" ]]; then
+            printf '%s\n' 'Windows app publish must produce FortixApp.exe; set AssemblyName=FortixApp.' >&2
+            exit 1
+          fi
+      - name: Download and verify pinned Wintun archive and DLL
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $download = Join-Path $env:RUNNER_TEMP ('wintun-release-download-' + [guid]::NewGuid())
+          $extract = Join-Path $env:RUNNER_TEMP ('wintun-release-extract-' + [guid]::NewGuid())
+          New-Item -ItemType Directory $download, $extract | Out-Null
+          $source = Get-Content internal/tun/wintun_windows.go -Raw
+          $url = [regex]::Match($source, 'https://www\.wintun\.net/builds/wintun-[0-9.]+\.zip').Value
+          $zipHash = [regex]::Match($source, 'wintunZipSHA256\s*=\s*"([a-f0-9]{64})"').Groups[1].Value
+          $dllHash = [regex]::Match($source, 'wintunAMD64SHA256\s*=\s*"([a-f0-9]{64})"').Groups[1].Value
+          if (!$url -or !$zipHash -or !$dllHash) { throw 'Missing pinned Wintun release constants' }
+          $zip = Join-Path $download 'wintun.zip'
+          Invoke-WebRequest -Uri $url -OutFile $zip -TimeoutSec 60
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $zipHash) { throw 'Wintun ZIP hash mismatch' }
+          Expand-Archive -LiteralPath $zip -DestinationPath $extract
+          $dll = Join-Path $extract 'wintun/bin/amd64/wintun.dll'
+          if ((Get-FileHash $dll -Algorithm SHA256).Hash -ne $dllHash) { throw 'Wintun DLL hash mismatch' }
+          Copy-Item -LiteralPath $dll -Destination (Join-Path $env:FORTIX_STAGE 'wintun.dll')
+      - name: Optional Windows signing hook
+        if: env.HAS_WINDOWS_SIGNING_CERT == 'true'
+        env:
+          WINDOWS_SIGNING_CERT: ${{ secrets.WINDOWS_SIGNING_CERT }}
+        run: scripts/sign-windows.sh "$(cygpath -u "$FORTIX_STAGE")"
+      - name: Package deterministic Windows preview ZIP
+        run: |
+          STAGE="$(cygpath -u "$FORTIX_STAGE")"
+          scripts/package-windows.sh "$RELEASE_TAG" dist "$STAGE/fortix.exe" "$STAGE/fortix-helper.exe" "$STAGE/app/FortixApp.exe" "$STAGE/wintun.dll"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-package
+          if-no-files-found: error
+          path: dist/fortix_*_windows_amd64.zip
+
   publish:
-    needs: [linux, macos]
+    needs: [linux, macos, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -105,9 +185,13 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: '*'
+          pattern: '{cli-packages,macos-app}'
           path: release-artifacts
           merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: windows-package
+          path: release-artifacts
       - name: Verify artifact set and generate combined checksums
         run: scripts/release-checksums.sh release-artifacts
       - name: Publish all assets in one release

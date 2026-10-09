@@ -52,6 +52,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        # The winget renderer runs under Git Bash and requires LF script endings.
+        env:
+          GIT_CONFIG_COUNT: "1"
+          GIT_CONFIG_KEY_0: core.autocrlf
+          GIT_CONFIG_VALUE_0: "false"
         with:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -73,6 +78,23 @@ jobs:
           if (Test-Path windows/Fortix.App/Fortix.App.csproj) {
             dotnet publish windows/Fortix.App -c Release -r win-x64 -m:1
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+      - name: Render winget manifests with Git Bash
+        shell: bash
+        run: |
+          STAGE="$(mktemp -d "$(cygpath -u "$RUNNER_TEMP")/fortix-winget.XXXXXX")"
+          MANIFESTS="$STAGE/manifests"
+          bash scripts/render-winget.sh 0.3.0 "$(printf '%064d' 0)" "$MANIFESTS"
+          printf 'FORTIX_WINGET_MANIFESTS=%s\n' "$(cygpath -w "$MANIFESTS")" >> "$GITHUB_ENV"
+      - name: Validate winget manifests when available
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Get-Command winget -ErrorAction SilentlyContinue) {
+            winget validate --manifest $env:FORTIX_WINGET_MANIFESTS
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else {
+            Write-Host 'SKIP: winget manifest validation (winget is unavailable).'
           }
       - name: Check interop vector drift
         working-directory: windows/vectors
