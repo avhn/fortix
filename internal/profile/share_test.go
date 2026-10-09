@@ -393,3 +393,27 @@ func FuzzShareParse(f *testing.F) {
 		}
 	})
 }
+
+// TestShareExclude carries excluded ranges through export and import, normalizing
+// pasted prefixes the same way as included ones.
+func TestShareExclude(t *testing.T) {
+	original := sharedTestProfile()
+	original.Backend = "native"
+	original.Routes = Routes{Mode: "gateway", Exclude: []string{"198.51.100.0/24"}, PreserveLAN: new(true)}
+	data, err := Export(original)
+	if err != nil || !bytes.Contains(data, []byte(`"exclude"`)) {
+		t.Fatalf("export: %s %v", data, err)
+	}
+	drafts, err := Parse(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed, err := Complete(drafts[0], original.Username, "")
+	if err != nil || !reflect.DeepEqual(completed.Routes.Exclude, original.Routes.Exclude) {
+		t.Fatalf("round trip: %+v, %v", completed.Routes, err)
+	}
+	drafts, err = Parse(shareInput(`{"routes":{"mode":"gateway","exclude":[" 198.51.100.0/24 "]}}`))
+	if err != nil || (*drafts[0].Routes.Exclude)[0] != "198.51.100.0/24" {
+		t.Fatalf("normalize: %v", err)
+	}
+}

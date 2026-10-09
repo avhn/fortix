@@ -45,12 +45,18 @@ type MFA struct {
 }
 
 // Routes specifies gateway, custom, or full routing with optional IPv4 prefixes.
+// Exclude removes ranges from gateway-pushed routes, for example a range another VPN
+// owns, so two gateways that push the same network can be connected together.
 // PreserveLAN uses a pointer so omission defaults to true while explicit false survives.
 type Routes struct {
 	Mode        string   `json:"mode"`
 	Include     []string `json:"include,omitempty"`
+	Exclude     []string `json:"exclude,omitempty"`
 	PreserveLAN *bool    `json:"preserve_lan"`
 }
+
+// MaxExclude bounds excluded ranges; each one can split pushed routes further.
+const MaxExclude = 64
 
 // DNS selects no managed DNS or split DNS for explicitly listed lowercase domains.
 // Validate rejects invalid names, duplicates, or domains incompatible with the mode.
@@ -220,12 +226,29 @@ func (p *Profile) validateRoutes(add func(string, string)) {
 		if len(p.Routes.Include) == 0 {
 			add("routes.include", "custom requires a non-empty list")
 		}
+		if p.Routes.Exclude != nil {
+			add("routes.exclude", "only allowed for gateway or full")
+		}
 	default:
 		add("routes.mode", "must be gateway, custom, or full")
 	}
-	prefixes := make([]netip.Prefix, 0, len(p.Routes.Include))
-	for i, text := range p.Routes.Include {
-		field := fmt.Sprintf("routes.include[%d]", i)
+	if p.Routes.Exclude != nil {
+		switch {
+		case len(p.Routes.Exclude) == 0 || len(p.Routes.Exclude) > MaxExclude:
+			add("routes.exclude", fmt.Sprintf("must list 1..%d prefixes when present", MaxExclude))
+		case p.Backend == "openfortivpn":
+			add("routes.exclude", "requires the native backend")
+		}
+	}
+	validatePrefixes("routes.include", p.Routes.Include, add)
+	validatePrefixes("routes.exclude", p.Routes.Exclude, add)
+}
+
+// validatePrefixes requires canonical, non-overlapping IPv4 prefixes of /8 or longer.
+func validatePrefixes(name string, list []string, add func(string, string)) {
+	prefixes := make([]netip.Prefix, 0, len(list))
+	for i, text := range list {
+		field := fmt.Sprintf("%s[%d]", name, i)
 		prefix, err := netip.ParsePrefix(text)
 		if err != nil || !prefix.Addr().Is4() {
 			add(field, "must be an IPv4 CIDR")
@@ -243,7 +266,7 @@ func (p *Profile) validateRoutes(add func(string, string)) {
 				break
 			}
 			if prefix.Overlaps(previous) {
-				add(field, "overlaps another included prefix")
+				add(field, "overlaps another prefix in the list")
 				break
 			}
 		}

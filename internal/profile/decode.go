@@ -21,7 +21,7 @@ var objectFields = map[string]map[string]bool{
 		"realm": true, "username": true, "trusted_cert": true, "mfa": true, "routes": true, "dns": true},
 	"$.gateway": {"host": true, "port": true},
 	"$.mfa":     {"mode": true, "digits": true, "period": true, "algorithm": true},
-	"$.routes":  {"mode": true, "include": true, "preserve_lan": true},
+	"$.routes":  {"mode": true, "include": true, "exclude": true, "preserve_lan": true},
 	"$.dns":     {"mode": true, "domains": true},
 }
 

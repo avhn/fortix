@@ -31,7 +31,7 @@ func TestCarveLocalNetworks(t *testing.T) {
 		want   []netip.Prefix
 	}{
 		{"split around LAN", prefixes("198.18.0.0/22"), prefixes("198.18.0.0/24", "198.18.2.0/23")},
-		{"disjoint unchanged", prefixes("10.30.4.0/24", "10.30.3.0/24"), prefixes("10.30.3.0/24", "10.30.4.0/24")},
+		{"disjoint unchanged", prefixes("10.40.4.0/24", "10.40.3.0/24"), prefixes("10.40.3.0/24", "10.40.4.0/24")},
 		{"tunnel networks stay", prefixes("10.20.0.0/16"), prefixes("10.20.0.0/16")},
 		{"default halves stay", prefixes("0.0.0.0/1", "128.0.0.0/1"), prefixes("0.0.0.0/1", "128.0.0.0/1")},
 		{"deep split", prefixes("198.0.0.0/8"), prefixes("198.0.0.0/12", "198.16.0.0/15", "198.18.0.0/24", "198.18.2.0/23", "198.18.4.0/22", "198.18.8.0/21", "198.18.16.0/20", "198.18.32.0/19", "198.18.64.0/18", "198.18.128.0/17", "198.19.0.0/16", "198.20.0.0/14", "198.24.0.0/13", "198.32.0.0/11", "198.64.0.0/10", "198.128.0.0/9")},
@@ -63,7 +63,7 @@ func TestCarveLocalNetworksFailsClosed(t *testing.T) {
 		{"route inside LAN", "198.18.1.0/24", "198.18.1.128/25"},
 		{"LAN equal to route", "198.18.1.0/24", "198.18.1.0/24"},
 		{"broad DHCP subnet", "10.16.0.0/12", "10.0.0.0/8"},
-		{"broad subnet covering route", "10.0.0.0/8", "10.30.3.0/24"},
+		{"broad subnet covering route", "10.0.0.0/8", "10.40.3.0/24"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			subnets := []InterfaceSubnet{{"en0", netip.MustParsePrefix(tc.local)}}

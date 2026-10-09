@@ -43,9 +43,46 @@ func negotiatedPrefixes(p *profile.Profile, effect session.Effect) ([]netip.Pref
 				prefixes = append(prefixes, prefix)
 			}
 		}
+		return excludeRoutes(prefixes, p.Routes.Exclude)
+	}
+	return excludeRoutes(slices.Clone(effect.PushedPrefixes), p.Routes.Exclude)
+}
+
+// excludeRoutes removes the profile's excluded ranges from gateway-selected routes,
+// so a range another VPN owns stays with that VPN. A pushed route inside an excluded
+// range is dropped and a broader one is split around it. Default halves are left
+// alone: the other VPN's narrower route already wins over them.
+func excludeRoutes(prefixes []netip.Prefix, exclude []string) ([]netip.Prefix, error) {
+	if len(exclude) == 0 {
 		return prefixes, nil
 	}
-	return slices.Clone(effect.PushedPrefixes), nil
+	result := make([]netip.Prefix, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		parts := []netip.Prefix{prefix}
+		if prefix.Bits() > 1 {
+			for _, text := range exclude {
+				excluded := netip.MustParsePrefix(text)
+				next := make([]netip.Prefix, 0, len(parts)+1)
+				for _, part := range parts {
+					next = append(next, subtractPrefix(part, excluded)...)
+				}
+				parts = next
+			}
+		}
+		result = append(result, parts...)
+		if len(result) > maxCarvedRoutes {
+			return nil, errors.New("too many routes after applying excluded ranges")
+		}
+	}
+	return result, nil
+}
+
+// profileLabel names a profile in user-facing messages, preferring its display name.
+func profileLabel(p profile.Profile) string {
+	if p.Name != "" {
+		return p.Name
+	}
+	return p.ID
 }
 
 // preserveLAN reports the profile's LAN policy; omission keeps the documented default.
@@ -81,7 +118,7 @@ func carveLocalNetworks(prefixes []netip.Prefix, subnets []InterfaceSubnet) ([]n
 				}
 				local := subnet.Prefix.Masked()
 				if prefix.Overlaps(local) && (local.Bits() < minCarvedLANBits || local.Bits() <= prefix.Bits()) {
-					return nil, &ConflictError{fmt.Sprintf("negotiated route %s overlaps %s on %s", prefix, local, subnet.Interface)}
+					return nil, &ConflictError{lanConflict(prefix, local, subnet.Interface)}
 				}
 				next := make([]netip.Prefix, 0, len(parts)+1)
 				for _, part := range parts {
@@ -250,7 +287,8 @@ func (m *Manager) reserveNegotiated(ctx context.Context, p *profile.Profile, eff
 		return nil, &InterfaceError{}
 	}
 	if current.profile.Backend != p.Backend || current.profile.Routes.Mode != p.Routes.Mode ||
-		!slices.Equal(current.profile.Routes.Include, p.Routes.Include) || current.profile.DNS.Mode != p.DNS.Mode ||
+		!slices.Equal(current.profile.Routes.Include, p.Routes.Include) || !slices.Equal(current.profile.Routes.Exclude, p.Routes.Exclude) ||
+		current.profile.DNS.Mode != p.DNS.Mode ||
 		!slices.Equal(current.profile.DNS.Domains, p.DNS.Domains) {
 		return nil, errors.New("native network policy changed within an attempt")
 	}
@@ -278,7 +316,7 @@ func (m *Manager) reserveNegotiated(ctx context.Context, p *profile.Profile, eff
 	for _, prefix := range prefixes {
 		for _, subnet := range subnets {
 			if subnet.Interface != effect.Interface && prefix.Bits() > 1 && prefix.Overlaps(subnet.Prefix) {
-				return nil, &ConflictError{fmt.Sprintf("negotiated route %s overlaps %s on %s", prefix, subnet.Prefix, subnet.Interface)}
+				return nil, &ConflictError{lanConflict(prefix, subnet.Prefix, subnet.Interface)}
 			}
 		}
 		for _, route := range routes {
@@ -321,12 +359,12 @@ func (m *Manager) reserveNegotiated(ctx context.Context, p *profile.Profile, eff
 			continue
 		}
 		if p.Routes.Mode == "full" && other.profile.Routes.Mode == "full" {
-			return nil, &ConflictError{"another full tunnel is active"}
+			return nil, &ConflictError{fullTunnelConflict(other.profile, *p)}
 		}
 		for _, prefix := range prefixes {
 			for _, reserved := range reservationPrefixes(other) {
 				if nativeOverlap(prefix, reserved) {
-					return nil, &ConflictError{fmt.Sprintf("negotiated route %s overlaps active profile %s", prefix, id)}
+					return nil, &ConflictError{profileConflict(other.profile, *p, reserved)}
 				}
 			}
 		}

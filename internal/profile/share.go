@@ -64,10 +64,11 @@ type DraftMFA struct {
 }
 
 // DraftRoutes preserves routing mode, complete prefix-list presence, and explicit false.
-// A supplied Include replaces the base list, including when it is explicitly empty.
+// A supplied Include or Exclude replaces the base list, including when it is explicitly empty.
 type DraftRoutes struct {
 	Mode        *string   `json:"mode,omitempty"`
 	Include     *[]string `json:"include,omitempty"`
+	Exclude     *[]string `json:"exclude,omitempty"`
 	PreserveLAN *bool     `json:"preserve_lan,omitempty"`
 }
 
@@ -261,6 +262,12 @@ func (d Draft) Apply(base Profile) Profile {
 				p.Routes.Include[i] = normalizeSharedPrefix(text)
 			}
 		}
+		if d.Routes.Exclude != nil {
+			p.Routes.Exclude = slices.Clone(*d.Routes.Exclude)
+			for i, text := range p.Routes.Exclude {
+				p.Routes.Exclude[i] = normalizeSharedPrefix(text)
+			}
+		}
 		if d.Routes.PreserveLAN != nil {
 			p.Routes.PreserveLAN = cloneSharedPointer(d.Routes.PreserveLAN)
 		}
@@ -377,6 +384,9 @@ func (d Draft) hasField(field string) bool {
 	if field == "routes.include" || strings.HasPrefix(field, "routes.include[") {
 		return d.Routes != nil && d.Routes.Include != nil
 	}
+	if field == "routes.exclude" || strings.HasPrefix(field, "routes.exclude[") {
+		return d.Routes != nil && d.Routes.Exclude != nil
+	}
 	if field == "dns.domains" || strings.HasPrefix(field, "dns.domains[") {
 		return d.DNS != nil && d.DNS.Domains != nil
 	}
@@ -389,6 +399,11 @@ func (d *Draft) normalize() {
 	if d.Routes != nil && d.Routes.Include != nil {
 		for i, text := range *d.Routes.Include {
 			(*d.Routes.Include)[i] = normalizeSharedPrefix(text)
+		}
+	}
+	if d.Routes != nil && d.Routes.Exclude != nil {
+		for i, text := range *d.Routes.Exclude {
+			(*d.Routes.Exclude)[i] = normalizeSharedPrefix(text)
 		}
 	}
 	if d.DNS != nil && d.DNS.Domains != nil {
@@ -431,6 +446,7 @@ func cloneSharedProfile(p Profile) Profile {
 	p.MFA.Algorithm = cloneSharedPointer(p.MFA.Algorithm)
 	p.Routes.PreserveLAN = cloneSharedPointer(p.Routes.PreserveLAN)
 	p.Routes.Include = slices.Clone(p.Routes.Include)
+	p.Routes.Exclude = slices.Clone(p.Routes.Exclude)
 	p.DNS.Domains = slices.Clone(p.DNS.Domains)
 	return p
 }
@@ -454,6 +470,9 @@ func draftFromProfile(p Profile) Draft {
 	}
 	if p.Routes.Include != nil {
 		d.Routes.Include = new(p.Routes.Include)
+	}
+	if p.Routes.Exclude != nil {
+		d.Routes.Exclude = new(p.Routes.Exclude)
 	}
 	if p.DNS.Domains != nil {
 		d.DNS.Domains = new(p.DNS.Domains)

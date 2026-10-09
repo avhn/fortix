@@ -28,6 +28,27 @@ type ConflictError struct{ Detail string }
 // Error returns the non-secret explanation of the refused network configuration.
 func (e *ConflictError) Error() string { return e.Detail }
 
+// profileConflict tells the user which connected profile holds a range and what to do.
+func profileConflict(other, p profile.Profile, prefix netip.Prefix) string {
+	if prefix.Bits() <= 1 {
+		return fullTunnelConflict(other, p)
+	}
+	return fmt.Sprintf("%s is already using %s. Disconnect %s to connect %s, or exclude %s in %s.",
+		profileLabel(other), prefix, profileLabel(other), profileLabel(p), prefix, profileLabel(p))
+}
+
+// fullTunnelConflict explains that only one profile may carry all traffic at a time.
+func fullTunnelConflict(other, p profile.Profile) string {
+	return fmt.Sprintf("%s is already sending all traffic through its tunnel. Disconnect %s to connect %s.",
+		profileLabel(other), profileLabel(other), profileLabel(p))
+}
+
+// lanConflict explains a route that would take over the network the computer is on.
+func lanConflict(prefix, local netip.Prefix, iface string) string {
+	return fmt.Sprintf("The VPN route %s overlaps your local network %s on %s. Connect from another network, or exclude that range in the profile.",
+		prefix, local, iface)
+}
+
 // Options configures platform paths, command execution and connected-link discovery.
 // OS defaults to the runtime platform; discovery and Runner default to host implementations.
 // LinkExists includes down/addressless interfaces because resolved state dies on deletion,
@@ -149,13 +170,13 @@ func (m *Manager) CheckUp(ctx context.Context, p *profile.Profile) error {
 			continue
 		}
 		if p.Routes.Mode == "full" && other.profile.Routes.Mode == "full" {
-			return &ConflictError{"another full tunnel is active"}
+			return &ConflictError{fullTunnelConflict(other.profile, *p)}
 		}
 		for _, candidate := range p.Routes.Include {
 			prefix := netip.MustParsePrefix(candidate)
 			for _, configured := range reservationPrefixes(other) {
 				if nativeOverlap(prefix, configured) {
-					return &ConflictError{fmt.Sprintf("route %s overlaps active profile %s", candidate, other.profile.ID)}
+					return &ConflictError{profileConflict(other.profile, *p, configured)}
 				}
 			}
 		}
@@ -400,17 +421,17 @@ func (m *Manager) checkPushedRoutes(id, link string, routes []JournalRoute) erro
 			}
 			prefix := netip.MustParsePrefix(route.CIDR)
 			if full && prefix.Bits() <= 1 {
-				return &ConflictError{"gateway pushed a default route while another full tunnel is active"}
+				return &ConflictError{fullTunnelConflict(other.profile, m.active[id].profile)}
 			}
 			for _, candidate := range reservationPrefixes(other) {
 				if prefix.Bits() > 1 && nativeOverlap(prefix, candidate) {
-					return &ConflictError{"gateway pushed a route overlapping another active profile"}
+					return &ConflictError{profileConflict(other.profile, m.active[id].profile, candidate)}
 				}
 			}
 			for _, pushed := range routes {
 				otherPrefix := netip.MustParsePrefix(pushed.CIDR)
 				if pushed.Interface == other.link && prefix.Bits() > 1 && otherPrefix.Bits() > 1 && prefix.Overlaps(otherPrefix) {
-					return &ConflictError{"gateway pushed a route overlapping another active tunnel route"}
+					return &ConflictError{profileConflict(other.profile, m.active[id].profile, otherPrefix)}
 				}
 			}
 		}

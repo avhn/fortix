@@ -107,7 +107,7 @@ func TestOwnedNetworkIntegration(t *testing.T) {
 					c.success(t, protocol.Request{Op: "profile.put", ProfileJSON: data})
 					result := c.request(t, protocol.Request{Op: "up", Profile: "other"})
 					if scenario == "overlap" {
-						if result.OK || result.Error.Code != protocol.Conflict || !strings.Contains(result.Error.Message, "overlaps") {
+						if result.OK || result.Error.Code != protocol.Conflict || !strings.Contains(result.Error.Message, "is already using") {
 							t.Fatalf("overlapping up accepted: %+v", result)
 						}
 					} else {

@@ -146,6 +146,31 @@ func TestValidate(t *testing.T) {
 		{"routes min prefix", func(p *Profile) { p.Routes.Include = []string{"10.0.0.0/8"} }, ""},
 		{"routes max prefix", func(p *Profile) { p.Routes.Include = []string{"10.20.0.1/32"} }, ""},
 		{"preserve LAN false", func(p *Profile) { p.Routes.PreserveLAN = new(false); p.ApplyDefaults() }, ""},
+		{"exclude gateway", func(p *Profile) {
+			p.Backend = "native"
+			p.Routes.Mode, p.Routes.Include, p.Routes.Exclude = "gateway", nil, []string{"198.18.3.0/24"}
+		}, ""},
+		{"exclude full", func(p *Profile) {
+			p.Backend = "native"
+			p.Routes.Mode, p.Routes.Include, p.Routes.Exclude = "full", nil, []string{"198.18.3.0/24"}
+		}, ""},
+		{"exclude custom", func(p *Profile) { p.Routes.Exclude = []string{"198.18.3.0/24"} }, "routes.exclude"},
+		{"exclude empty", func(p *Profile) { p.Routes.Mode, p.Routes.Include, p.Routes.Exclude = "gateway", nil, []string{} }, "routes.exclude"},
+		{"exclude openfortivpn", func(p *Profile) {
+			p.Backend, p.Routes.Mode, p.Routes.Include, p.Routes.Exclude = "openfortivpn", "gateway", nil, []string{"198.18.3.0/24"}
+		}, "routes.exclude"},
+		{"exclude malformed", func(p *Profile) {
+			p.Routes.Mode, p.Routes.Include, p.Routes.Exclude = "gateway", nil, []string{"198.18.3.1/24"}
+		}, "routes.exclude[0]"},
+		{"exclude overlap", func(p *Profile) {
+			p.Routes.Mode, p.Routes.Include, p.Routes.Exclude = "gateway", nil, []string{"198.18.0.0/16", "198.18.3.0/24"}
+		}, "routes.exclude[1]"},
+		{"exclude too many", func(p *Profile) {
+			p.Routes.Mode, p.Routes.Include, p.Routes.Exclude = "gateway", nil, make([]string, MaxExclude+1)
+			for i := range p.Routes.Exclude {
+				p.Routes.Exclude[i] = fmt.Sprintf("10.%d.0.0/16", i)
+			}
+		}, "routes.exclude"},
 		{"dns unknown", func(p *Profile) { p.DNS.Mode = "other" }, "dns.mode"},
 		{"dns none", func(p *Profile) { p.DNS.Mode = "none"; p.DNS.Domains = nil }, ""},
 		{"dns none domains", func(p *Profile) { p.DNS.Mode = "none" }, "dns.domains"},
