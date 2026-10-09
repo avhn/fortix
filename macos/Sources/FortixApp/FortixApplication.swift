@@ -1,107 +1,246 @@
 import AppKit
+import Combine
 import FortixCore
 import SwiftUI
 
-/// FortixApplication offers a menu bar utility and one shared management window without tunnel ownership.
+/// FortixApplication keeps only the app menu commands in SwiftUI. The status item and the
+/// management window are owned by AppKit through the delegate, so no SwiftUI update can
+/// resize the status item and feed its own layout back into another update.
 @MainActor
 struct FortixApplication: App {
-  /// Model shares one socket subscription across menus, sheets, and windows.
-  @StateObject private var model = AppModel()
+  /// Delegate owns the shared model, the status item, and the management window.
+  @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
   /// Body leaves tunnels running on ordinary quit and exposes clean disconnect as a separate action.
   var body: some Scene {
-    MenuBarExtra {
-      FortixMenu(model: model)
-    } label: {
-      MenuLabel(model: model)
-    }
-    Window("Fortix", id: "management") {
-      ManagementView(model: model)
-    }
-    .defaultSize(width: AppTheme.windowWidth, height: AppTheme.windowHeight)
-    .commands {
-      CommandGroup(replacing: .appInfo) {
-        Button("About Fortix") { showAboutPanel() }
+    Settings { EmptyView() }
+      .commands {
+        CommandGroup(replacing: .appSettings) {}
+        CommandGroup(replacing: .appInfo) {
+          Button("About Fortix") { showAboutPanel() }
+        }
+        CommandGroup(replacing: .appTermination) {
+          Button("Quit Fortix (leave tunnels running)") { NSApplication.shared.terminate(nil) }
+            .keyboardShortcut("q")
+          Button("Disconnect all and quit") { delegate.disconnectAllAndQuit() }
+        }
       }
-      CommandGroup(replacing: .appTermination) {
-        Button("Quit Fortix (leave tunnels running)") { NSApplication.shared.terminate(nil) }
-          .keyboardShortcut("q")
-        Button("Disconnect all and quit") {
-          model.perform {
-            try await model.disconnect()
-            NSApplication.shared.terminate(nil)
-          }
-        }.disabled(!model.reachable || model.busy)
-      }
+  }
+}
+
+/// AppDelegate starts the helper subscription once and wires the AppKit status controller.
+@MainActor
+final class AppDelegate: NSObject, NSApplicationDelegate {
+  /// Model shares one socket subscription across the menu, sheets, and the window.
+  private(set) lazy var model = AppModel()
+  /// Status owns the menu bar item for the whole application lifetime.
+  private var status: StatusController?
+
+  /// ApplicationDidFinishLaunching connects to the helper and shows setup on first launch.
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    let controller = StatusController(model: model)
+    status = controller
+    model.start()
+    if !UserDefaults.standard.bool(forKey: "setupCompleted") { controller.showWindow() }
+  }
+
+  /// DisconnectAllAndQuit stops every tunnel before terminating, when the helper is reachable.
+  func disconnectAllAndQuit() {
+    guard model.reachable, !model.busy else { return }
+    model.perform {
+      try await self.model.disconnect()
+      NSApplication.shared.terminate(nil)
     }
   }
 }
 
-/// MenuLabel owns the always-present startup hook and reveals new challenges in the management window.
-struct MenuLabel: View {
-  /// Model provides aggregate status and queued human decisions.
-  @ObservedObject var model: AppModel
-  /// OpenWindow activates the existing management window rather than creating duplicate sheets.
-  @Environment(\.openWindow) private var openWindow
-
-  /// Body starts one bounded reconnect loop and shows initial setup on first launch.
-  var body: some View {
-    RingIcon(status: model.aggregate, label: "Fortix: \(model.statusText)")
-      .task {
-        model.start()
-        if !UserDefaults.standard.bool(forKey: "setupCompleted") { reveal() }
-      }
-      .onReceive(model.$prompts) { prompts in
-        if !prompts.isEmpty { reveal() }
-      }
-  }
-
-  /// Reveal brings explicit prompts and installation instructions in front of other applications.
-  private func reveal() {
-    openWindow(id: "management")
-    NSApplication.shared.activate(ignoringOtherApps: true)
-  }
-}
-
-/// FortixMenu presents textual state and explicit single-profile or all-profile operations.
-struct FortixMenu: View {
+/// StatusController draws the ring in a fixed-width status item and builds the menu natively.
+/// The image is replaced only when the visible glyph changes, and the menu is rebuilt each time
+/// it opens, so model updates never block the main thread or the menu.
+@MainActor
+final class StatusController: NSObject, NSMenuDelegate, NSWindowDelegate {
   /// Model provides authoritative state and serialized user actions.
-  @ObservedObject var model: AppModel
-  /// OpenWindow reveals the profile editor, diagnostics, and pending prompts.
-  @Environment(\.openWindow) private var openWindow
+  private let model: AppModel
+  /// Item is fixed at square length so a new image never changes the menu bar layout.
+  private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+  /// Shown remembers the glyph on screen to skip redundant image updates.
+  private var shown: (status: AggregateStatus, frame: Int)?
+  /// Frame advances the connecting animation while it runs.
+  private var frame = 0
+  /// Animation ticks only while the aggregate status is connecting and motion is allowed.
+  private var animation: Timer?
+  /// Window hosts the SwiftUI management view and is reused after it is closed.
+  private var window: NSWindow?
+  /// Subscriptions keep the model observers alive for the controller's lifetime.
+  private var subscriptions: Set<AnyCancellable> = []
 
-  /// Body never derives connectivity from the icon alone and disables unavailable helper operations.
-  var body: some View {
-    Text(model.statusText)
-    if let message = model.message { Text(message) }
-    Divider()
-    ForEach(model.profiles) { profile in
-      let state = model.states[profile.id]
-      Menu("\(profile.name): \(state?.state ?? "unknown")") {
-        Button("Connect") { model.perform { try await model.connect(profile.id) } }
-          .disabled(!model.reachable || model.busy || state?.wanted == true)
-        Button("Disconnect") { model.perform { try await model.disconnect(profile.id) } }
-          .disabled(!model.reachable || model.busy)
+  /// Init draws the initial glyph and observes the model and the motion preferences.
+  init(model: AppModel) {
+    self.model = model
+    super.init()
+    let menu = NSMenu()
+    menu.delegate = self
+    item.menu = menu
+    refresh()
+    // objectWillChange fires before the new value is stored, so read it on the next turn.
+    model.objectWillChange
+      .receive(on: RunLoop.main)
+      .sink { [weak self] _ in self?.refresh() }
+      .store(in: &subscriptions)
+    model.$prompts
+      .receive(on: RunLoop.main)
+      .sink { [weak self] prompts in if !prompts.isEmpty { self?.showWindow() } }
+      .store(in: &subscriptions)
+    NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+      .receive(on: RunLoop.main)
+      .sink { [weak self] _ in self?.refresh() }
+      .store(in: &subscriptions)
+    NSWorkspace.shared.notificationCenter
+      .publisher(for: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification)
+      .receive(on: RunLoop.main)
+      .sink { [weak self] _ in self?.refresh() }
+      .store(in: &subscriptions)
+  }
+
+  /// Animates is true when the connecting ring should rotate under the current preferences.
+  private var animates: Bool {
+    let enabled = UserDefaults.standard.object(forKey: "animateIcon") as? Bool ?? true
+    return model.aggregate == .connecting && enabled
+      && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+  }
+
+  /// Refresh starts or stops the animation and redraws the glyph only if it changed.
+  private func refresh() {
+    if animates {
+      if animation == nil {
+        animation = Timer.scheduledTimer(withTimeInterval: AppTheme.frameInterval, repeats: true) {
+          [weak self] _ in
+          MainActor.assumeIsolated {
+            guard let self else { return }
+            self.frame = (self.frame + 1) % AppTheme.frames
+            self.draw()
+          }
+        }
       }
+    } else {
+      animation?.invalidate()
+      animation = nil
+      frame = 0
     }
-    Button("Connect all") { model.perform { try await model.connectAll() } }
-      .disabled(!model.reachable || model.busy || model.profiles.isEmpty)
-    Button("Disconnect all") { model.perform { try await model.disconnect() } }
-      .disabled(!model.reachable || model.busy)
-    Divider()
-    Button(model.prompts.isEmpty ? "Profiles, logs and settings..." : "Review pending request...") {
-      openWindow(id: "management")
-      NSApplication.shared.activate(ignoringOtherApps: true)
+    draw()
+  }
+
+  /// Draw replaces the status image and accessibility label when the visible glyph changed.
+  private func draw() {
+    let status = model.aggregate
+    let current = animates ? frame : 0
+    guard let button = item.button else { return }
+    button.setAccessibilityLabel("Fortix: \(model.statusText)")
+    button.toolTip = "Fortix: \(model.statusText)"
+    if let shown, shown.status == status, shown.frame == current { return }
+    shown = (status, current)
+    button.image = RingRenderer.image(status: status, frame: current)
+  }
+
+  /// MenuNeedsUpdate rebuilds the menu from current state each time it opens.
+  func menuNeedsUpdate(_ menu: NSMenu) {
+    menu.removeAllItems()
+    let idle = model.reachable && !model.busy
+    menu.addItem(disabled(model.statusText))
+    if let message = model.message { menu.addItem(disabled(message)) }
+    menu.addItem(.separator())
+    for profile in model.profiles {
+      let state = model.states[profile.id]
+      let entry = NSMenuItem(title: "\(profile.name): \(state?.state ?? "unknown")", action: nil, keyEquivalent: "")
+      let submenu = NSMenu()
+      let id = profile.id
+      submenu.addItem(action("Connect", enabled: idle && state?.wanted != true) { model in
+        model.perform { try await model.connect(id) }
+      })
+      submenu.addItem(action("Disconnect", enabled: idle) { model in
+        model.perform { try await model.disconnect(id) }
+      })
+      entry.submenu = submenu
+      menu.addItem(entry)
     }
-    Divider()
-    Button("About Fortix") { showAboutPanel() }
-    Button("Quit Fortix (leave tunnels running)") { NSApplication.shared.terminate(nil) }
-    Button("Disconnect all and quit") {
+    menu.addItem(action("Connect all", enabled: idle && !model.profiles.isEmpty) { model in
+      model.perform { try await model.connectAll() }
+    })
+    menu.addItem(action("Disconnect all", enabled: idle) { model in
+      model.perform { try await model.disconnect() }
+    })
+    menu.addItem(.separator())
+    let open = model.prompts.isEmpty ? "Profiles, logs and settings..." : "Review pending request..."
+    menu.addItem(action(open, enabled: true) { [weak self] _ in self?.showWindow() })
+    menu.addItem(.separator())
+    menu.addItem(action("About Fortix", enabled: true) { _ in showAboutPanel() })
+    menu.addItem(action("Quit Fortix (leave tunnels running)", enabled: true) { _ in
+      NSApplication.shared.terminate(nil)
+    })
+    menu.addItem(action("Disconnect all and quit", enabled: idle) { model in
       model.perform {
         try await model.disconnect()
         NSApplication.shared.terminate(nil)
       }
-    }.disabled(!model.reachable || model.busy)
+    })
+  }
+
+  /// Disabled returns a non-interactive informational menu row.
+  private func disabled(_ title: String) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+    item.isEnabled = false
+    return item
+  }
+
+  /// Action returns a menu row that runs the handler with the shared model when chosen.
+  private func action(_ title: String, enabled: Bool, _ handler: @escaping (AppModel) -> Void)
+    -> NSMenuItem
+  {
+    let item = MenuAction(title: title) { [model] in handler(model) }
+    item.isEnabled = enabled
+    return item
+  }
+
+  /// ShowWindow brings the management window forward with a Dock icon while it is open.
+  func showWindow() {
+    if window == nil {
+      let window = NSWindow(contentViewController: NSHostingController(rootView: ManagementView(model: model)))
+      window.title = "Fortix"
+      window.setContentSize(NSSize(width: AppTheme.windowWidth, height: AppTheme.windowHeight))
+      window.isReleasedWhenClosed = false
+      window.delegate = self
+      window.center()
+      self.window = window
+    }
+    NSApplication.shared.setActivationPolicy(.regular)
+    NSApplication.shared.activate(ignoringOtherApps: true)
+    window?.makeKeyAndOrderFront(nil)
+  }
+
+  /// WindowWillClose returns the app to a menu bar accessory without a Dock icon.
+  func windowWillClose(_ notification: Notification) {
+    NSApplication.shared.setActivationPolicy(.accessory)
+  }
+}
+
+/// MenuAction is a menu item that runs a closure, keeping menu wiring next to the menu layout.
+final class MenuAction: NSMenuItem {
+  /// Handler runs on the main thread when the item is chosen.
+  private let handler: @MainActor () -> Void
+
+  /// Init targets the item at itself so no responder chain lookup is involved.
+  init(title: String, handler: @escaping @MainActor () -> Void) {
+    self.handler = handler
+    super.init(title: title, action: #selector(run), keyEquivalent: "")
+    target = self
+  }
+
+  /// Coder initialization is unsupported because items are only built in code.
+  required init(coder: NSCoder) { fatalError("MenuAction is built in code only") }
+
+  /// Run invokes the handler for a chosen item.
+  @objc private func run() {
+    MainActor.assumeIsolated { handler() }
   }
 }
 
