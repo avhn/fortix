@@ -114,6 +114,9 @@ func testGatewaySequence(t *testing.T, closeAllocation bool) {
 		if r.Proto != "HTTP/1.1" {
 			t.Error("wrong HTTP protocol")
 		}
+		if r.UserAgent() != userAgent {
+			t.Error("wrong User-Agent")
+		}
 		if r.URL.Path == "/remote/logincheck" {
 			if err := r.ParseForm(); err != nil {
 				t.Error(err)
@@ -317,9 +320,38 @@ func TestTunnelDenial(t *testing.T) {
 	}
 }
 
-// TestHTTPStatusFailures verifies allocation/config/logout statuses are not followed.
+// TestAllocationStatusIgnored verifies non-200 allocation responses still reach the
+// configuration fetch, matching gateways that answer /remote/index with 403.
+func TestAllocationStatusIgnored(t *testing.T) {
+	for _, path := range []string{"/remote/index", "/remote/fortisslvpn"} {
+		t.Run(path, func(t *testing.T) {
+			_, options := fakeGateway(t, func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case path:
+					w.WriteHeader(http.StatusForbidden)
+				case "/remote/logincheck":
+					w.Header().Set("Set-Cookie", "SVPNCOOKIE=fixture")
+					_, _ = io.WriteString(w, "ret=1")
+				case "/remote/fortisslvpn_xml":
+					_, _ = io.WriteString(w, fixtureXML)
+				}
+			})
+			client, err := NewClient(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			tunnel, err := client.Login(context.Background(), loginCredentials())
+			if err != nil {
+				t.Fatalf("allocation status was not ignored: %v", err)
+			}
+			_ = tunnel.Close()
+		})
+	}
+}
+
+// TestHTTPStatusFailures verifies config/logout statuses are not followed.
 func TestHTTPStatusFailures(t *testing.T) {
-	for _, path := range []string{"/remote/index", "/remote/fortisslvpn", "/remote/fortisslvpn_xml", "/remote/logout"} {
+	for _, path := range []string{"/remote/fortisslvpn_xml", "/remote/logout"} {
 		t.Run(path, func(t *testing.T) {
 			_, options := fakeGateway(t, func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == path {

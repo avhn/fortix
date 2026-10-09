@@ -28,8 +28,9 @@ func TestLogoutRecordedPeer(t *testing.T) {
 					_, _ = io.WriteString(w, "ret=1")
 				case "/remote/index":
 					if scenario == "allocation failed" {
+						// Allocation statuses are ignored, so a closed session is the failure.
 						hostnameUnavailable.Store(true)
-						w.WriteHeader(http.StatusServiceUnavailable)
+						w.Header().Set("Connection", "close")
 					}
 				case "/remote/fortisslvpn_xml":
 					if scenario == "config failed" {

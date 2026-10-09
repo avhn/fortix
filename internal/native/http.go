@@ -22,6 +22,10 @@ const (
 	maxCookie     = 4096
 )
 
+// userAgent matches the browser-style agent FortiGate portals accept. Some gateways
+// close the connection without a response when they see Go's default agent.
+const userAgent = "Mozilla/5.0 SV1"
+
 // Credentials borrows one account password only for Login. Password is never retained
 // by the returned connection; realm and username are form-encoded, never URL paths.
 type Credentials struct {
@@ -161,8 +165,10 @@ func (c *Client) Login(ctx context.Context, credentials Credentials) (*Connectio
 			_ = c.logout(cleanup, cookie, peerAddress)
 		}
 	}()
+	// Allocation statuses vary by firmware (current releases answer /remote/index with
+	// 403), so any complete response is accepted; the configuration fetch must succeed.
 	for _, path := range []string{"/remote/index", "/remote/fortisslvpn"} {
-		if _, err := wire.get(ctx, path, cookie); err != nil {
+		if _, _, err := wire.request(ctx, http.MethodGet, path, "", cookie, MaxConfigBytes); err != nil {
 			return nil, err
 		}
 	}
@@ -267,6 +273,7 @@ func (w *wireHTTP) send(method, path, form, cookie, host string) error {
 	if err != nil {
 		return errors.New("invalid gateway request")
 	}
+	request.Header.Set("User-Agent", userAgent)
 	if host != "" {
 		request.Host = host
 	}
