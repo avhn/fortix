@@ -367,6 +367,8 @@ printf 'retained\n' >"${STAGING}/site/apt/Release"
 # shellcheck disable=SC2016
 grep -Fq 'test "$FINGERPRINT" = 7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06' "${STAGING}/site/index.html"
 grep -Fq '<code>7F1D1CA8B09790EAC0FA70DA1A52C72D8C1F6F06</code>' "${STAGING}/site/apt/index.html"
+# shellcheck disable=SC2016
+grep -Fq 'fortix-helper.exe install --user $env:USERNAME' "${STAGING}/site/index.html"
 [[ "$(cat "${STAGING}/site/apt/Release")" == retained ]]
 
 expect_failure 'usage:' "${REPO_ROOT}/scripts/build-apt-repo.sh"

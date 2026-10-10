@@ -36,7 +36,7 @@ var ALLOWED_PATHS = []string{
 	"packaging/macos/AppIcon.icns", "packaging/macos/Assets.car", "scripts/check-unix-unchanged.sh",
 	"scripts/render-winget.sh", "scripts/package-windows.sh", "scripts/sign-windows.sh",
 	"scripts/verify-release-assets.sh", "scripts/release-checksums.sh",
-	"scripts/test-packaging.sh", "scripts/check-release-unchanged.sh", ".github/workflows/windows.yml",
+	"scripts/test-packaging.sh", "scripts/check-release-unchanged.sh", "scripts/build-pages-index.sh", ".github/workflows/windows.yml",
 	".github/workflows/unix-unchanged.yml", ".github/workflows/release.yml",
 }
 var ALLOWED_PREFIXES = []string{"internal/winfs/", "internal/winapi/", "windows/", "packaging/windows/", "scripts/_unixproof/"}

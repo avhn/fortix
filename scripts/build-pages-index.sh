@@ -66,7 +66,7 @@ EOF
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fortix</title>
-<meta name="description" content="FortiGate SSL VPN profile manager for macOS and Debian/Ubuntu.">
+<meta name="description" content="FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows (preview).">
 EOF
     style
     cat <<'EOF'
@@ -74,7 +74,7 @@ EOF
 <body>
 <main>
 <h1>fortix</h1>
-<p class="lead">FortiGate SSL VPN profile manager for macOS and Debian/Ubuntu. The CLI, macOS menu-bar app, and Linux tray share a root helper.</p>
+<p class="lead">FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows (preview). The CLI, macOS menu-bar app, Linux tray, and Windows desktop app share a privileged helper.</p>
 <p>Source, documentation and releases: <a href="https://github.com/avhn/fortix">github.com/avhn/fortix</a></p>
 <h2>Homebrew</h2>
 <pre><code># Menu-bar app (arm64 macOS 13 or later); it installs its own helper
@@ -88,6 +88,10 @@ sudo "$(brew --prefix)/bin/fortix-helper" install</code></pre>
 EOF
     install_steps
     cat <<'EOF'
+<h2>Windows (preview)</h2>
+<p>Download <code>fortix_&lt;version&gt;_windows_amd64.zip</code> and <code>checksums.txt</code> from the <a href="https://github.com/avhn/fortix/releases/latest">latest release</a>, verify the ZIP with <code>Get-FileHash</code>, and extract it. Then, in an elevated PowerShell inside the extracted folder:</p>
+<pre><code>.\fortix-helper.exe install --user $env:USERNAME</code></pre>
+<p>Sign out and back in for the <code>fortix</code> group membership, then start <code>FortixApp.exe</code> or use <code>fortix.exe</code>. The executables are unsigned, so SmartScreen warns on first launch. Windows supports native password-only profiles; <a href="https://github.com/avhn/fortix/blob/main/docs/windows.md">the Windows guide</a> covers verification, security, DNS, and recovery.</p>
 </main>
 </body>
 </html>
