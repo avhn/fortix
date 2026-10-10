@@ -101,7 +101,7 @@ printf '%s\n' 'NOTICE GoReleaser v2.18.2 and .goreleaser.yaml do not enable -tri
     'NOTICE Both builds use one source path and -buildvcs=false; this excludes VCS metadata, not code differences.' \
     'NOTICE Ten Go binaries feed eight Unix download assets; container/archive bytes are not rebuilt.'
 
-for FILE in .goreleaser.yaml LICENSE THIRD_PARTY_NOTICES.txt README.md \
+for FILE in .goreleaser.yaml LICENSE THIRD_PARTY_NOTICES.txt \
     packaging/fortix-helper.service packaging/postinst packaging/prerm packaging/postrm \
     scripts/build-macos-app.sh scripts/build-dmg.sh scripts/build-apt-repo.sh; do
     compare "${FILE}" "${STAGING}/base/${FILE}" "${REPO_ROOT}/${FILE}"
@@ -115,6 +115,10 @@ for FILE in packaging/macos/AppIcon.icns packaging/macos/Assets.car; do
         "$(shasum -a 256 "${STAGING}/base/${FILE}" | awk '{print $1}')" \
         "$(shasum -a 256 "${REPO_ROOT}/${FILE}" | awk '{print $1}')"
 done
+# README.md ships in the Unix archives as documentation; it now also describes Windows.
+printf 'NOTICE intended documentation exception README.md base=%s head=%s\n' \
+    "$(shasum -a 256 "${STAGING}/base/README.md" | awk '{print $1}')" \
+    "$(shasum -a 256 "${REPO_ROOT}/README.md" | awk '{print $1}')"
 # Check every remaining macOS packaging file without widening the icon exception.
 {
     git -C "${STAGING}/base" ls-files -- packaging/macos/

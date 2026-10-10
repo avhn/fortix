@@ -28,8 +28,9 @@ var ALLOWED_NEW = map[string]bool{"internal/network/routing_shared.go": true}
 var MOVE_DONORS = map[string]bool{"internal/network/native.go": true, "internal/network/manager.go": true}
 
 // The app icon moved to the graphite artwork in both appearances; these are its only
-// intended macOS packaging changes.
-var ALLOWED_CHANGED = map[string]bool{"packaging/macos/AppIcon.icns": true, "packaging/macos/Assets.car": true}
+// intended macOS packaging changes. README.md documents the Windows release and ships in
+// the Unix archives as documentation only.
+var ALLOWED_CHANGED = map[string]bool{"packaging/macos/AppIcon.icns": true, "packaging/macos/Assets.car": true, "README.md": true}
 var ALLOWED_PATHS = []string{
 	"docs/windows.md", "docs/release.md", "assets/icon/art.py", "docs/assets/readme-header.png",
 	"packaging/macos/AppIcon.icns", "packaging/macos/Assets.car", "scripts/check-unix-unchanged.sh",

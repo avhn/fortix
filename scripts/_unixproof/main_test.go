@@ -178,7 +178,7 @@ func TestPathPolicy(t *testing.T) {
 		{"internal/native_windows_extra.go", false}, {"internal/winapi/native.go", true},
 		{"internal/winapi-other/native.go", false}, {"windows/Fortix/Program.cs", true},
 		{"scripts/_unixproof/main.go", true}, {"scripts/check-unix-unchanged.sh", true},
-		{"scripts/other.sh", false}, {"README.md", false}, {"docs/windows.md", true},
+		{"scripts/other.sh", false}, {"README.md", true}, {"LICENSE", false}, {"docs/windows.md", true},
 		{"testdata/interop/new.json", true}, {"testdata/interop/existing.json", false},
 		{"testdata/interop/missing.json", false},
 	} {

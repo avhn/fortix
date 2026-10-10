@@ -7,9 +7,10 @@
 
 # fortix
 
-FortiGate SSL VPN profile manager for macOS and Debian/Ubuntu. The CLI, macOS
-menu-bar app, and Linux tray share a root helper with two selectable backends:
-a native password-only client and optional
+FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows
+(preview). The CLI, macOS menu-bar app, Linux tray, and Windows desktop app share
+a privileged helper with two selectable backends: a native password-only client
+and, on macOS and Linux, optional
 [openfortivpn](https://github.com/adrienverge/openfortivpn) for push or code-based
 second factors.
 
@@ -38,11 +39,17 @@ flowchart LR
 - An arm64 macOS app with a profile editor, import preview, logs, installation,
   aggregate ring status, optional motion, and next-login autostart.
 - A Linux system tray with notifications; the CLI works without a desktop client.
+- A Windows preview: a native desktop app with a notification-area icon, profile
+  editor, logs, and Credential Manager passwords, plus the CLI and a helper
+  service using Wintun, IP Helper routes, and NRPT split DNS. See
+  [Windows](docs/windows.md).
 
-**Status: beta.** v0.2 has been used daily against real FortiGate gateways on
+**Status: beta.** fortix has been used daily against real FortiGate gateways on
 macOS and tested end to end on Debian in a container, with two tunnels up at
-once. The native backend supports only password gateways, not 2FA; use the
-openfortivpn backend for push or codes. There is no Windows, IPsec, SAML/SSO,
+once. Windows support is a preview: it is tested end to end in CI against a
+local test gateway, ships unsigned, and supports only the native backend. The
+native backend supports only password gateways, not 2FA; use the
+openfortivpn backend for push or codes. There is no IPsec, SAML/SSO,
 client-certificate authentication, DTLS, or IPv6 tunnel routing. Native PPP
 does not support PAP/CHAP or compression. The schema accepts `totp` and
 `static` MFA modes, but clients currently prompt for their codes; automatic
@@ -58,9 +65,10 @@ same network can run together; the openfortivpn backend applies neither.
 | macOS 13+ on Apple silicon | Homebrew cask (app) | DMG download, Homebrew formula (CLI only) |
 | macOS on Intel | Homebrew formula (CLI) | CLI archive |
 | Debian/Ubuntu amd64 or arm64 | apt repository | `.deb` download, Homebrew formula |
+| Windows 10 22H2 or 11, x64 (preview) | Release ZIP | None yet |
 
 Every channel installs the same binaries. Review the source before granting
-root access: the helper runs as root.
+root access: the helper runs as root (LocalSystem on Windows).
 
 ### Homebrew
 
@@ -130,7 +138,7 @@ names will not resolve even though the tunnel is up. Check with
 ### Direct downloads
 
 Each [GitHub release](https://github.com/avhn/fortix/releases) carries the
-DMG, `.deb` packages, CLI archives, and `checksums.txt`. Verify a download
+DMG, `.deb` packages, CLI archives, the Windows ZIP, and `checksums.txt`. Verify a download
 before opening it:
 
 ```sh
@@ -145,6 +153,23 @@ yourself to the `fortix` group as above. From a CLI archive, keep `fortix` and
 `fortix-helper` together and run `sudo ./fortix-helper install`; it creates the
 `fortix` group and enrolls `SUDO_USER` (or `--user NAME`). Do not mix the
 archive installer with the Debian package on one machine.
+
+### Windows (preview)
+
+Download `fortix_<version>_windows_amd64.zip` and `checksums.txt`, verify the
+ZIP with `Get-FileHash`, and extract it. Then, in an elevated PowerShell inside
+the extracted folder:
+
+```powershell
+.\fortix-helper.exe install --user $env:USERNAME
+```
+
+Sign out and back in for the `fortix` group membership, then start
+`FortixApp.exe` or use `fortix.exe`. The executables are unsigned, so
+SmartScreen warns on first launch. Windows supports only native password-only
+profiles; openfortivpn, MFA profiles, and FortiClient import are unavailable.
+Uninstall with `fortix-helper.exe uninstall` (add `--purge` to remove profiles).
+[Windows](docs/windows.md) covers verification, security, DNS, and recovery.
 
 ### From source
 
