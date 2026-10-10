@@ -186,7 +186,7 @@ jobs:
           }
           $deadline = [DateTime]::UtcNow.AddSeconds(30)
           do {
-            $service = Get-Service -Name fortix-helper -ErrorAction SilentlyContinue
+            $service = Get-Service -Name FortixHelper -ErrorAction SilentlyContinue
             if (!$service) { break }
             Start-Sleep -Milliseconds 250
           } while ([DateTime]::UtcNow -lt $deadline)

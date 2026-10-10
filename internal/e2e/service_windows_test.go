@@ -182,7 +182,7 @@ func dialService(t *testing.T, ctx context.Context) *client.Client {
 // crashService kills the SCM-reported process, never a guessed PID or unrelated helper instance.
 func crashService(t *testing.T, ctx context.Context) {
 	t.Helper()
-	output, err := powershell(ctx, `$ErrorActionPreference = 'Stop'; $s = Get-CimInstance Win32_Service -Filter "Name='fortix-helper'"; if (!$s -or $s.ProcessId -eq 0) { throw 'Service has no process' }; [uint32]$s.ProcessId`)
+	output, err := powershell(ctx, `$ErrorActionPreference = 'Stop'; $s = Get-CimInstance Win32_Service -Filter "Name='FortixHelper'"; if (!$s -or $s.ProcessId -eq 0) { throw 'Service has no process' }; [uint32]$s.ProcessId`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,9 +202,9 @@ func crashService(t *testing.T, ctx context.Context) {
 $crashed = __CRASHED_PID__
 $deadline = [DateTime]::UtcNow.AddSeconds(10)
 do {
-  $s = Get-Service fortix-helper
-  if ($s.Status -eq 'Stopped') { Start-Service fortix-helper; return }
-  $current = Get-CimInstance Win32_Service -Filter "Name='fortix-helper'"
+  $s = Get-Service FortixHelper
+  if ($s.Status -eq 'Stopped') { Start-Service FortixHelper; return }
+  $current = Get-CimInstance Win32_Service -Filter "Name='FortixHelper'"
   if ($s.Status -eq 'Running' -and $current.ProcessId -ne 0 -and $current.ProcessId -ne $crashed) { return }
   Start-Sleep -Milliseconds 200
 } while ([DateTime]::UtcNow -lt $deadline)
