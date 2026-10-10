@@ -240,21 +240,29 @@ type renameInfo struct {
 // rename moves a staged handle to a single name under the pinned root.
 // A missing destination is never replaced if another writer creates it first.
 func (r *Root) rename(handle windows.Handle, name string, replace bool) error {
+	var flags uint32
+	if replace {
+		// POSIX replacement preserves old read handles, which must allow delete sharing.
+		flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
+	}
+	return RenameRelative(handle, r.Handle(), name, flags)
+}
+
+// RenameRelative renames the object behind handle to one name inside the directory root,
+// using FileRenameInfoEx with the given FILE_RENAME_* flags. Names containing separators,
+// drive prefixes or reserved device names are rejected before any system call.
+func RenameRelative(handle, root windows.Handle, name string, flags uint32) error {
 	utf16, err := windows.UTF16FromString(name)
 	if err != nil || !validName(name) {
 		return errors.New("winfs: invalid rename destination")
 	}
 	var layout renameInfo
-	offset := int(unsafe.Offsetof(layout.FileName))
 	length := (len(utf16) - 1) * 2
-	// Keep the fixed layout and trailing terminator inside the allocation under checkptr.
-	buffer := make([]byte, max(int(unsafe.Sizeof(layout)), offset+length+2))
+	// kernel32 requires at least sizeof(FILE_RENAME_INFO) plus FileNameLength bytes; the
+	// struct's own FileName element then leaves room for the terminator.
+	buffer := make([]byte, int(unsafe.Sizeof(layout))+length)
 	info := (*renameInfo)(unsafe.Pointer(&buffer[0]))
-	info.RootDirectory, info.FileNameLength = r.Handle(), uint32(length)
-	if replace {
-		// POSIX replacement preserves old read handles, which must allow delete sharing.
-		info.Flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
-	}
+	info.Flags, info.RootDirectory, info.FileNameLength = flags, root, uint32(length)
 	copy(unsafe.Slice(&info.FileName[0], len(utf16)-1), utf16[:len(utf16)-1])
 	return windows.SetFileInformationByHandle(handle, windows.FileRenameInfoEx, &buffer[0], uint32(len(buffer)))
 }

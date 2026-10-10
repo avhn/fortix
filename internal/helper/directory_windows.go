@@ -177,27 +177,9 @@ func renamePrivateAt(dir *helperDirectory, from, to string) error {
 		return err
 	}
 	defer f.Close()
-	name, err := windows.UTF16FromString(to)
-	if err != nil || filepath.Base(to) != to || strings.ContainsAny(to, `\/:`) {
+	if filepath.Base(to) != to || strings.ContainsAny(to, `\/:`) {
 		return errors.New("invalid rotation name")
 	}
-	var layout struct {
-		Flags  uint32
-		Root   windows.Handle
-		Length uint32
-		Name   [1]uint16
-	}
-	size := int(unsafe.Offsetof(layout.Name)) + (len(name)-1)*2
-	data := make([]byte, max(size, int(unsafe.Sizeof(layout))))
-	info := (*struct {
-		Flags  uint32
-		Root   windows.Handle
-		Length uint32
-		Name   [1]uint16
-	})(unsafe.Pointer(&data[0]))
-	info.Flags = windows.FILE_RENAME_REPLACE_IF_EXISTS | windows.FILE_RENAME_POSIX_SEMANTICS
-	info.Root = dir.root.Handle()
-	info.Length = uint32((len(name) - 1) * 2)
-	copy(unsafe.Slice(&info.Name[0], len(name)-1), name[:len(name)-1])
-	return windows.SetFileInformationByHandle(windows.Handle(f.Fd()), windows.FileRenameInfoEx, &data[0], uint32(len(data)))
+	return winfs.RenameRelative(windows.Handle(f.Fd()), dir.root.Handle(),
+		to, windows.FILE_RENAME_REPLACE_IF_EXISTS|windows.FILE_RENAME_POSIX_SEMANTICS)
 }
