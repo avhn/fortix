@@ -77,10 +77,11 @@ EOF
 <p class="lead">FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows (preview). The CLI, macOS menu-bar app, Linux tray, and Windows desktop app share a privileged helper.</p>
 <p>Source, documentation and releases: <a href="https://github.com/avhn/fortix">github.com/avhn/fortix</a></p>
 <h2>Homebrew</h2>
-<pre><code># Menu-bar app (arm64 macOS 13 or later); it installs its own helper
+<p>Most macOS users want the app; note the <code>--cask</code> flag. Without it, Homebrew installs only the CLI and helper, with no app in <code>/Applications</code>.</p>
+<pre><code># Fortix.app in /Applications (arm64 macOS 13 or later); it installs its own helper
 brew install --cask avhn/tap/fortix
 
-# Or the CLI and helper only (macOS or Linux, amd64 or arm64)
+# CLI and helper only (Intel Macs, Linux, or command line only)
 brew install avhn/tap/fortix
 sudo "$(brew --prefix)/bin/fortix-helper" install</code></pre>
 <h2>Debian and Ubuntu</h2>

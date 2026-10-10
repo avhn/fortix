@@ -72,11 +72,20 @@ root access: the helper runs as root (LocalSystem on Windows).
 
 ### Homebrew
 
-```sh
-# Menu-bar app (arm64 macOS 13 or later); it installs its own helper
-brew install --cask avhn/tap/fortix
+Most macOS users want the app. Install it with the cask; note the `--cask`
+flag:
 
-# Or the CLI and helper only (macOS or Linux, amd64 or arm64)
+```sh
+# Fortix.app in /Applications (arm64 macOS 13 or later); it installs its own helper
+brew install --cask avhn/tap/fortix
+```
+
+Without `--cask`, `brew install avhn/tap/fortix` installs the formula instead:
+the `fortix` CLI and `fortix-helper` only, with no app in `/Applications`. Use
+it on Intel Macs, on Linux, or when you only want the command line:
+
+```sh
+# CLI and helper only (macOS or Linux, amd64 or arm64)
 brew install avhn/tap/fortix
 sudo "$(brew --prefix)/bin/fortix-helper" install
 ```
