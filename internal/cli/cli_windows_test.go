@@ -30,7 +30,7 @@ func TestRun(t *testing.T) {
 		{"version", []string{"version"}, 0, buildinfo.Version + "\n", ""},
 		{"valid", []string{"profile", "validate", valid}, 0, "ok: work\n", ""},
 		{"invalid", []string{"profile", "validate", invalid}, 1, "", "schema_version: must be 1"},
-		{"missing file", []string{"profile", "validate", filepath.Join(dir, "missing.json")}, 1, "", "read profile"},
+		{"missing file", []string{"profile", "validate", filepath.Join(dir, "missing.json")}, 1, "", "cannot find the file"},
 		{"directory", []string{"profile", "validate", dir}, 1, "", "read profile"},
 		{"empty", nil, 2, "", "usage:"},
 		{"unknown", []string{"connect"}, 2, "", "usage:"},

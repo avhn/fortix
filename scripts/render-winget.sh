@@ -21,6 +21,7 @@ OUTPUT="${3}"
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/fortix-winget.XXXXXX")"
 trap 'rm -rf "${STAGING}"' EXIT
 cat >"${STAGING}/avhn.fortix.yaml" <<EOF
+# yaml-language-server: \$schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
 PackageIdentifier: avhn.fortix
 PackageVersion: '${VERSION}'
 DefaultLocale: en-US
@@ -28,6 +29,7 @@ ManifestType: version
 ManifestVersion: 1.10.0
 EOF
 cat >"${STAGING}/avhn.fortix.installer.yaml" <<EOF
+# yaml-language-server: \$schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
 PackageIdentifier: avhn.fortix
 PackageVersion: '${VERSION}'
 InstallerType: zip
@@ -46,6 +48,7 @@ ManifestType: installer
 ManifestVersion: 1.10.0
 EOF
 cat >"${STAGING}/avhn.fortix.locale.en-US.yaml" <<EOF
+# yaml-language-server: \$schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
 PackageIdentifier: avhn.fortix
 PackageVersion: '${VERSION}'
 PackageLocale: en-US

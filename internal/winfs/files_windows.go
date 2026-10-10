@@ -270,24 +270,24 @@ func (r *Root) AtomicWrite(ctx context.Context, name string, data []byte, p Poli
 		return err
 	}
 	if err := CheckSecurity(r.Handle(), p, true); err != nil {
-		return err
+		return fmt.Errorf("winfs: check directory security: %w", err)
 	}
 	old, err := r.Open(name, p)
 	if err != nil && !IsNotExist(err) {
-		return err
+		return fmt.Errorf("winfs: open existing file: %w", err)
 	}
 	if old != nil {
 		defer func() { _ = old.Close() }()
 	}
 	sd, err := p.Descriptor(false)
 	if err != nil {
-		return err
+		return fmt.Errorf("winfs: build file descriptor: %w", err)
 	}
 	temporary := ".fortix-" + rand.Text()
 	h, err := relativeOpen(r.Handle(), temporary, windows.FILE_GENERIC_WRITE|windows.FILE_GENERIC_READ|windows.DELETE,
 		windows.FILE_CREATE, false, sd, windows.FILE_SHARE_READ)
 	if err != nil {
-		return err
+		return fmt.Errorf("winfs: create staged file: %w", err)
 	}
 	f := os.NewFile(uintptr(h), temporary)
 	published := false
@@ -300,22 +300,22 @@ func (r *Root) AtomicWrite(ctx context.Context, name string, data []byte, p Poli
 		err = errors.Join(err, f.Close())
 	}()
 	if _, err = inspect(h, false, &r.volume); err != nil {
-		return err
+		return fmt.Errorf("winfs: inspect staged file: %w", err)
 	}
 	if err = CheckSecurity(h, p, false); err != nil {
-		return err
+		return fmt.Errorf("winfs: check staged file security: %w", err)
 	}
 	if _, err = f.Write(data); err != nil {
 		return fmt.Errorf("write staged file: %w", err)
 	}
 	if err = windows.FlushFileBuffers(h); err != nil {
-		return err
+		return fmt.Errorf("winfs: flush staged file: %w", err)
 	}
 	if err = ctx.Err(); err != nil {
 		return err
 	}
 	if err = r.rename(h, name, old != nil); err != nil {
-		return err
+		return fmt.Errorf("winfs: publish staged file: %w", err)
 	}
 	published = true
 	return nil

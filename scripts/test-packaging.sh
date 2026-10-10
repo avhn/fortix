@@ -297,6 +297,7 @@ WINGET_HASH=0000000000000000000000000000000000000000000000000000000000000000
 "${REPO_ROOT}/scripts/render-winget.sh" v0.3.0 "${WINGET_HASH}" "${STAGING}/winget"
 mkdir "${STAGING}/expected winget"
 cat >"${STAGING}/expected winget/avhn.fortix.yaml" <<'EOF'
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.10.0.schema.json
 PackageIdentifier: avhn.fortix
 PackageVersion: '0.3.0'
 DefaultLocale: en-US
@@ -304,6 +305,7 @@ ManifestType: version
 ManifestVersion: 1.10.0
 EOF
 cat >"${STAGING}/expected winget/avhn.fortix.installer.yaml" <<'EOF'
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.10.0.schema.json
 PackageIdentifier: avhn.fortix
 PackageVersion: '0.3.0'
 InstallerType: zip
@@ -322,6 +324,7 @@ ManifestType: installer
 ManifestVersion: 1.10.0
 EOF
 cat >"${STAGING}/expected winget/avhn.fortix.locale.en-US.yaml" <<'EOF'
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
 PackageIdentifier: avhn.fortix
 PackageVersion: '0.3.0'
 PackageLocale: en-US
