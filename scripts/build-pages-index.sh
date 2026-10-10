@@ -76,7 +76,14 @@ EOF
 <h1>fortix</h1>
 <p class="lead">FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows (preview). The CLI, macOS menu-bar app, Linux tray, and Windows desktop app share a privileged helper.</p>
 <p>Source, documentation and releases: <a href="https://github.com/avhn/fortix">github.com/avhn/fortix</a></p>
-<p>Your VPN password is never stored by fortix itself. If you choose to save it, it goes into your system's credential store: the Keychain on macOS, the desktop keyring on Linux, and Credential Manager on Windows. Profiles carry no passwords.</p>
+<h2>Security: your password stays with your OS</h2>
+<p>fortix never stores your VPN password itself: not in the app, not in profile files, and not on disk. Saving is optional, happens only after a successful connection, and uses your operating system's own credential store under your user account:</p>
+<ul>
+<li>macOS: Keychain (visible in Keychain Access), shared by the app and the CLI</li>
+<li>Debian and Ubuntu: the desktop keyring through the Secret Service (GNOME Keyring or KWallet)</li>
+<li>Windows: Credential Manager (Windows Credentials)</li>
+</ul>
+<p>Without a saved password, fortix asks each time. Profiles and shared profile files carry no passwords, and Forget password in the app or <code>fortix password clear &lt;id&gt;</code> removes the saved entry.</p>
 <h2>Homebrew</h2>
 <p>Most macOS users want the app; note the <code>--cask</code> flag. Without it, Homebrew installs only the CLI and helper, with no app in <code>/Applications</code>.</p>
 <pre><code># Fortix.app in /Applications (arm64 macOS 13 or later)

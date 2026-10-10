@@ -28,8 +28,11 @@ flowchart LR
 
 - Named profiles, individual toggles, and several simultaneous tunnels when
   addresses and routes do not conflict.
-- Password lookup and optional saving in the OS keychain, with hidden terminal
-  or native desktop prompts when the keyring is unavailable.
+- Passwords stay with your operating system, not with fortix: saving is
+  optional and goes only to the macOS Keychain, the Linux desktop keyring, or
+  Windows Credential Manager, never to fortix files or disk. Without a saved
+  password, fortix asks through a hidden terminal or native desktop prompt. See
+  [where your password is stored](#where-your-password-is-stored).
 - Native password-only tunnels without openfortivpn or pppd; optional FortiToken
   push and prompted codes through the openfortivpn backend.
 - Custom IPv4 routes and split DNS, owned-resource cleanup, and helper recovery.
