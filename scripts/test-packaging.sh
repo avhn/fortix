@@ -23,7 +23,11 @@ expect_failure() {
         printf 'expected failure: %s\n' "${*}" >&2
         exit 1
     fi
-    grep -Fq "${diagnostic}" "${STAGING}/stderr"
+    if ! grep -Fq "${diagnostic}" "${STAGING}/stderr"; then
+        printf 'expected diagnostic %s from: %s\n' "${diagnostic}" "${*}" >&2
+        cat "${STAGING}/stderr" >&2
+        exit 1
+    fi
 }
 
 # asset_set creates all nine payloads, including the canonical Windows preview ZIP.
@@ -169,6 +173,9 @@ sed 's/fortix_0.2.0_/fortix_0.2.0+build.1_/g' "${STAGING}/complete assets/checks
 grep -Fq '/v0.2.0+build.1/fortix_0.2.0+build.1_darwin_arm64.dmg' "${STAGING}/metadata tap/Casks/fortix.rb"
 
 # Windows packaging never executes fixture binaries and gates its hash override explicitly.
+# package-windows.sh checks every platform's notices and resolves Windows module licenses
+# offline, so fill the module cache first; go.sum verifies every download.
+go -C "${REPO_ROOT}" mod download
 mkdir "${STAGING}/windows inputs"
 for FILE in fortix.exe fortix-helper.exe FortixApp.exe wintun.dll; do
     printf 'inert fixture: %s\n' "${FILE}" >"${STAGING}/windows inputs/${FILE}"
