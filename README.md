@@ -58,6 +58,23 @@ seed/static-secret storage is not implemented. With the native backend,
 and `routes.exclude` leaves listed ranges out of them so two VPNs that push the
 same network can run together; the openfortivpn backend applies neither.
 
+## Where your password is stored
+
+fortix never stores your VPN password itself: not in the app, not in profile
+files, and not on disk. When you choose to save it, it goes into your operating
+system's own credential store, under your user account:
+
+| Platform | Stored in |
+| --- | --- |
+| macOS | Keychain (visible in **Keychain Access**), shared by the app and the CLI |
+| Debian/Ubuntu | Desktop keyring through the Secret Service (GNOME Keyring or KWallet) |
+| Windows | Credential Manager (**Windows Credentials**) |
+
+Saving is optional and happens only after a successful connection. If you do
+not save it, or the keyring is unavailable, fortix asks for the password each
+time. Profiles and exported profile files carry no passwords, and **Forget
+password** in the app or `fortix password clear <id>` removes the saved entry.
+
 ## Installation
 
 | Platform | Recommended | Alternatives |
