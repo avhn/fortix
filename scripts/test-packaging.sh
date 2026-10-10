@@ -175,24 +175,27 @@ grep -Fq '/v0.2.0+build.1/fortix_0.2.0+build.1_darwin_arm64.dmg' "${STAGING}/met
 # Windows packaging never executes fixture binaries and gates its hash override explicitly.
 # package-windows.sh checks every platform's notices and resolves Windows module licenses
 # offline, so fill the module cache first; go.sum verifies every download.
-go -C "${REPO_ROOT}" mod download
-mkdir "${STAGING}/windows inputs"
-for FILE in fortix.exe fortix-helper.exe FortixApp.exe wintun.dll; do
-    printf 'inert fixture: %s\n' "${FILE}" >"${STAGING}/windows inputs/${FILE}"
-done
-WINDOWS_INPUTS=("${STAGING}/windows inputs/fortix.exe" "${STAGING}/windows inputs/fortix-helper.exe" "${STAGING}/windows inputs/FortixApp.exe" "${STAGING}/windows inputs/wintun.dll")
-DLL_HASH="$(shasum -a 256 "${WINDOWS_INPUTS[3]}" | awk '{print $1}')"
-expect_failure 'usage:' "${REPO_ROOT}/scripts/package-windows.sh"
-expect_failure 'invalid release version' "${REPO_ROOT}/scripts/package-windows.sh" unsafe "${STAGING}/unsafe zip" "${WINDOWS_INPUTS[@]}"
-expect_failure 'Wintun DLL SHA-256 mismatch' "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/bad dll" "${WINDOWS_INPUTS[@]}"
-expect_failure 'Wintun DLL SHA-256 mismatch' env FORTIX_PACKAGING_TEST=0 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/ignored override" "${WINDOWS_INPUTS[@]}"
-expect_failure 'Wintun DLL SHA-256 mismatch' env -u FORTIX_PACKAGING_TEST FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/unset test mode" "${WINDOWS_INPUTS[@]}"
-ln -s "${WINDOWS_INPUTS[3]}" "${STAGING}/linked-wintun.dll"
-expect_failure 'invalid Windows payload' "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/linked dll" "${WINDOWS_INPUTS[0]}" "${WINDOWS_INPUTS[1]}" "${WINDOWS_INPUTS[2]}" "${STAGING}/linked-wintun.dll"
-[[ ! -e "${STAGING}/bad dll" && ! -e "${STAGING}/ignored override" ]]
-# A missing Windows-only license fails closed without changing cached modules or Unix notices.
-mkdir "${STAGING}/notice tools" "${STAGING}/missing license"
-cat >"${STAGING}/notice tools/go" <<'EOF'
+# The Windows ZIP cases need the Go release that go.mod names, which the apt publishing
+# job does not install; the CI check job always runs them.
+if GOTOOLCHAIN=local go -C "${REPO_ROOT}" list -m >/dev/null 2>&1; then
+    go -C "${REPO_ROOT}" mod download
+    mkdir "${STAGING}/windows inputs"
+    for FILE in fortix.exe fortix-helper.exe FortixApp.exe wintun.dll; do
+        printf 'inert fixture: %s\n' "${FILE}" >"${STAGING}/windows inputs/${FILE}"
+    done
+    WINDOWS_INPUTS=("${STAGING}/windows inputs/fortix.exe" "${STAGING}/windows inputs/fortix-helper.exe" "${STAGING}/windows inputs/FortixApp.exe" "${STAGING}/windows inputs/wintun.dll")
+    DLL_HASH="$(shasum -a 256 "${WINDOWS_INPUTS[3]}" | awk '{print $1}')"
+    expect_failure 'usage:' "${REPO_ROOT}/scripts/package-windows.sh"
+    expect_failure 'invalid release version' "${REPO_ROOT}/scripts/package-windows.sh" unsafe "${STAGING}/unsafe zip" "${WINDOWS_INPUTS[@]}"
+    expect_failure 'Wintun DLL SHA-256 mismatch' "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/bad dll" "${WINDOWS_INPUTS[@]}"
+    expect_failure 'Wintun DLL SHA-256 mismatch' env FORTIX_PACKAGING_TEST=0 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/ignored override" "${WINDOWS_INPUTS[@]}"
+    expect_failure 'Wintun DLL SHA-256 mismatch' env -u FORTIX_PACKAGING_TEST FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/unset test mode" "${WINDOWS_INPUTS[@]}"
+    ln -s "${WINDOWS_INPUTS[3]}" "${STAGING}/linked-wintun.dll"
+    expect_failure 'invalid Windows payload' "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/linked dll" "${WINDOWS_INPUTS[0]}" "${WINDOWS_INPUTS[1]}" "${WINDOWS_INPUTS[2]}" "${STAGING}/linked-wintun.dll"
+    [[ ! -e "${STAGING}/bad dll" && ! -e "${STAGING}/ignored override" ]]
+    # A missing Windows-only license fails closed without changing cached modules or Unix notices.
+    mkdir "${STAGING}/notice tools" "${STAGING}/missing license"
+    cat >"${STAGING}/notice tools/go" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 [[ "${GOPROXY:-}" == off && "${GOSUMDB:-}" == off && "${GOTOOLCHAIN:-}" == local ]] || {
@@ -205,53 +208,53 @@ else
     exec "${FORTIX_REAL_GO}" "${@}"
 fi
 EOF
-chmod 0700 "${STAGING}/notice tools/go"
-expect_failure 'missing version or license for github.com/danieljoos/wincred' env \
-    PATH="${STAGING}/notice tools:${PATH}" FORTIX_REAL_GO="$(command -v go)" FORTIX_NOTICE_FIXTURE_DIR="${STAGING}/missing license" \
-    FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=1700000000 \
-    "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/missing license output" "${WINDOWS_INPUTS[@]}"
-[[ ! -e "${STAGING}/missing license output" ]]
-env FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=1700000000 TZ=UTC \
-    "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/windows first" "${WINDOWS_INPUTS[@]}"
-# An isolated PATH models Windows hosts with only python or a broken python3 alias.
-mkdir "${STAGING}/common tools" "${STAGING}/python tools" "${STAGING}/python3 stub" "${STAGING}/no python"
-for TOOL in bash dirname sed mktemp cp rm cat sort go diff grep mkdir mv; do
-    ln -s "$(command -v "${TOOL}")" "${STAGING}/common tools/${TOOL}"
-done
-ln -s "$(command -v python3)" "${STAGING}/python tools/python"
-cat >"${STAGING}/python3 stub/python3" <<'EOF'
+    chmod 0700 "${STAGING}/notice tools/go"
+    expect_failure 'missing version or license for github.com/danieljoos/wincred' env \
+        PATH="${STAGING}/notice tools:${PATH}" FORTIX_REAL_GO="$(command -v go)" FORTIX_NOTICE_FIXTURE_DIR="${STAGING}/missing license" \
+        FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=1700000000 \
+        "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/missing license output" "${WINDOWS_INPUTS[@]}"
+    [[ ! -e "${STAGING}/missing license output" ]]
+    env FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=1700000000 TZ=UTC \
+        "${REPO_ROOT}/scripts/package-windows.sh" v0.2.0 "${STAGING}/windows first" "${WINDOWS_INPUTS[@]}"
+    # An isolated PATH models Windows hosts with only python or a broken python3 alias.
+    mkdir "${STAGING}/common tools" "${STAGING}/python tools" "${STAGING}/python3 stub" "${STAGING}/no python"
+    for TOOL in bash dirname sed mktemp cp rm cat sort go diff grep mkdir mv; do
+        ln -s "$(command -v "${TOOL}")" "${STAGING}/common tools/${TOOL}"
+    done
+    ln -s "$(command -v python3)" "${STAGING}/python tools/python"
+    cat >"${STAGING}/python3 stub/python3" <<'EOF'
 #!/usr/bin/env bash
 # Model a discoverable interpreter alias that cannot run Python.
 set -euo pipefail
 printf '%s\n' probed >>"${FORTIX_PYTHON_PROBE_LOG}"
 exit 9
 EOF
-chmod 0700 "${STAGING}/python3 stub/python3"
-ln -s "${STAGING}/python3 stub/python3" "${STAGING}/no python/python"
-expect_failure 'Python 3.8 or newer is required' env \
-    PATH="${STAGING}/no python:${STAGING}/python3 stub:${STAGING}/common tools" FORTIX_PYTHON_PROBE_LOG="${STAGING}/failed probes" \
-    "$(command -v bash)" "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/no python output" "${WINDOWS_INPUTS[@]}"
-[[ "$(wc -l <"${STAGING}/failed probes" | tr -d ' ')" -eq 2 && ! -e "${STAGING}/no python output" ]]
-for PYTHON_PATH in "${STAGING}/python tools" "${STAGING}/python3 stub:${STAGING}/python tools"; do
-    env PATH="${PYTHON_PATH}:${STAGING}/common tools" FORTIX_PYTHON_PROBE_LOG="${STAGING}/fallback probe" \
-        FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=1700000000 TZ=UTC \
-        "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/python output" "${WINDOWS_INPUTS[@]}"
-    cmp "${STAGING}/windows first/fortix_0.2.0_windows_amd64.zip" "${STAGING}/python output/fortix_0.2.0_windows_amd64.zip"
-    rm -rf "${STAGING}/python output"
-done
-[[ "$(cat "${STAGING}/fallback probe")" == probed ]]
-# Changed source metadata and timezone cannot affect deterministic ZIP bytes.
-touch -t 200001010000 "${WINDOWS_INPUTS[@]}"
-chmod 0600 "${WINDOWS_INPUTS[@]}"
-env FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=1700000000 TZ=Pacific/Honolulu \
-    FORTIX_WINDOWS_CLI="${WINDOWS_INPUTS[0]}" FORTIX_WINDOWS_HELPER="${WINDOWS_INPUTS[1]}" \
-    FORTIX_WINDOWS_APP="${WINDOWS_INPUTS[2]}" WINTUN_DLL="${WINDOWS_INPUTS[3]}" \
-    "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/windows second"
-cmp "${STAGING}/windows first/fortix_0.2.0_windows_amd64.zip" "${STAGING}/windows second/fortix_0.2.0_windows_amd64.zip"
-expect_failure 'output already exists' "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/windows first" "${WINDOWS_INPUTS[@]}"
-expect_failure 'invalid SOURCE_DATE_EPOCH' env FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=invalid \
-    "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/invalid epoch" "${WINDOWS_INPUTS[@]}"
-python3 -I - "${STAGING}/windows first/fortix_0.2.0_windows_amd64.zip" "${REPO_ROOT}" "${STAGING}/windows inputs" <<'PY'
+    chmod 0700 "${STAGING}/python3 stub/python3"
+    ln -s "${STAGING}/python3 stub/python3" "${STAGING}/no python/python"
+    expect_failure 'Python 3.8 or newer is required' env \
+        PATH="${STAGING}/no python:${STAGING}/python3 stub:${STAGING}/common tools" FORTIX_PYTHON_PROBE_LOG="${STAGING}/failed probes" \
+        "$(command -v bash)" "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/no python output" "${WINDOWS_INPUTS[@]}"
+    [[ "$(wc -l <"${STAGING}/failed probes" | tr -d ' ')" -eq 2 && ! -e "${STAGING}/no python output" ]]
+    for PYTHON_PATH in "${STAGING}/python tools" "${STAGING}/python3 stub:${STAGING}/python tools"; do
+        env PATH="${PYTHON_PATH}:${STAGING}/common tools" FORTIX_PYTHON_PROBE_LOG="${STAGING}/fallback probe" \
+            FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=1700000000 TZ=UTC \
+            "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/python output" "${WINDOWS_INPUTS[@]}"
+        cmp "${STAGING}/windows first/fortix_0.2.0_windows_amd64.zip" "${STAGING}/python output/fortix_0.2.0_windows_amd64.zip"
+        rm -rf "${STAGING}/python output"
+    done
+    [[ "$(cat "${STAGING}/fallback probe")" == probed ]]
+    # Changed source metadata and timezone cannot affect deterministic ZIP bytes.
+    touch -t 200001010000 "${WINDOWS_INPUTS[@]}"
+    chmod 0600 "${WINDOWS_INPUTS[@]}"
+    env FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=1700000000 TZ=Pacific/Honolulu \
+        FORTIX_WINDOWS_CLI="${WINDOWS_INPUTS[0]}" FORTIX_WINDOWS_HELPER="${WINDOWS_INPUTS[1]}" \
+        FORTIX_WINDOWS_APP="${WINDOWS_INPUTS[2]}" WINTUN_DLL="${WINDOWS_INPUTS[3]}" \
+        "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/windows second"
+    cmp "${STAGING}/windows first/fortix_0.2.0_windows_amd64.zip" "${STAGING}/windows second/fortix_0.2.0_windows_amd64.zip"
+    expect_failure 'output already exists' "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/windows first" "${WINDOWS_INPUTS[@]}"
+    expect_failure 'invalid SOURCE_DATE_EPOCH' env FORTIX_PACKAGING_TEST=1 FORTIX_TEST_WINTUN_SHA256="${DLL_HASH}" SOURCE_DATE_EPOCH=invalid \
+        "${REPO_ROOT}/scripts/package-windows.sh" 0.2.0 "${STAGING}/invalid epoch" "${WINDOWS_INPUTS[@]}"
+    python3 -I - "${STAGING}/windows first/fortix_0.2.0_windows_amd64.zip" "${REPO_ROOT}" "${STAGING}/windows inputs" <<'PY'
 import os
 import pathlib
 import subprocess
@@ -294,10 +297,13 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     for text in [b'preview', b'unsigned', b'SmartScreen', b'fortix-helper.exe install --user <name>', b'fortix-helper.exe uninstall', b'docs/windows.md']:
         assert text in readme
 PY
-SIGNING_OUTPUT="$(env -u WINDOWS_SIGNING_CERT "${REPO_ROOT}/scripts/sign-windows.sh")"
-[[ "${SIGNING_OUTPUT}" == 'SKIP: Windows signing (no certificate configured).' ]]
-SIGNING_OUTPUT="$(WINDOWS_SIGNING_CERT=inert-fixture "${REPO_ROOT}/scripts/sign-windows.sh" "${STAGING}/windows inputs")"
-[[ "${SIGNING_OUTPUT}" == 'SKIP: Windows signing (placeholder hook; preview payload remains unsigned).' ]]
+    SIGNING_OUTPUT="$(env -u WINDOWS_SIGNING_CERT "${REPO_ROOT}/scripts/sign-windows.sh")"
+    [[ "${SIGNING_OUTPUT}" == 'SKIP: Windows signing (no certificate configured).' ]]
+    SIGNING_OUTPUT="$(WINDOWS_SIGNING_CERT=inert-fixture "${REPO_ROOT}/scripts/sign-windows.sh" "${STAGING}/windows inputs")"
+    [[ "${SIGNING_OUTPUT}" == 'SKIP: Windows signing (placeholder hook; preview payload remains unsigned).' ]]
+else
+    printf '%s\n' 'SKIP: Windows ZIP packaging tests (the Go toolchain go.mod requires is unavailable).'
+fi
 
 # Compare all three winget files byte-for-byte, including a numeric-looking dummy hash.
 WINGET_HASH=0000000000000000000000000000000000000000000000000000000000000000
