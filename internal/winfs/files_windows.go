@@ -248,9 +248,18 @@ func (r *Root) rename(handle windows.Handle, name string, replace bool) error {
 	return RenameRelative(handle, r.Handle(), name, flags)
 }
 
-// RenameRelative renames the object behind handle to one name inside the directory root,
-// using FileRenameInfoEx with the given FILE_RENAME_* flags. Names containing separators,
-// drive prefixes or reserved device names are rejected before any system call.
+// File information classes for NtSetInformationFile renames.
+const (
+	fileRenameInformation   = 10
+	fileRenameInformationEx = 65
+)
+
+// RenameRelative renames the object behind handle to one name inside the directory root.
+// It uses FileRenameInformationEx with the given FILE_RENAME_* flags. A volume without the
+// extended class falls back to FileRenameInformation, mapping only the replace flag; POSIX
+// semantics are then unavailable and the call reports the extended status alongside the
+// fallback's. Names containing separators, drive prefixes or reserved device names are
+// rejected before any system call.
 func RenameRelative(handle, root windows.Handle, name string, flags uint32) error {
 	utf16, err := windows.UTF16FromString(name)
 	if err != nil || !validName(name) {
@@ -258,13 +267,41 @@ func RenameRelative(handle, root windows.Handle, name string, flags uint32) erro
 	}
 	var layout renameInfo
 	length := (len(utf16) - 1) * 2
-	// kernel32 requires at least sizeof(FILE_RENAME_INFO) plus FileNameLength bytes; the
-	// struct's own FileName element then leaves room for the terminator.
+	// Allocate the full structure plus the name; the FileName element covers the terminator.
 	buffer := make([]byte, int(unsafe.Sizeof(layout))+length)
 	info := (*renameInfo)(unsafe.Pointer(&buffer[0]))
 	info.Flags, info.RootDirectory, info.FileNameLength = flags, root, uint32(length)
 	copy(unsafe.Slice(&info.FileName[0], len(utf16)-1), utf16[:len(utf16)-1])
-	return windows.SetFileInformationByHandle(handle, windows.FileRenameInfoEx, &buffer[0], uint32(len(buffer)))
+	var status windows.IO_STATUS_BLOCK
+	extended := windows.NtSetInformationFile(handle, &status, &buffer[0], uint32(len(buffer)), fileRenameInformationEx)
+	if extended == nil {
+		return nil
+	}
+	switch ntCode(extended) {
+	case uint32(windows.STATUS_INVALID_PARAMETER), uint32(windows.STATUS_INVALID_INFO_CLASS),
+		uint32(windows.STATUS_NOT_SUPPORTED), uint32(windows.STATUS_NOT_IMPLEMENTED):
+	default:
+		return fmt.Errorf("rename %s: %w (0x%08X)", name, extended, ntCode(extended))
+	}
+	// The classic class reads a BOOLEAN ReplaceIfExists in the same leading field.
+	info.Flags = 0
+	if flags&windows.FILE_RENAME_REPLACE_IF_EXISTS != 0 {
+		info.Flags = 1
+	}
+	if classic := windows.NtSetInformationFile(handle, &status, &buffer[0], uint32(len(buffer)), fileRenameInformation); classic != nil {
+		return fmt.Errorf("rename %s: extended 0x%08X, classic: %w (0x%08X)", name,
+			ntCode(extended), classic, ntCode(classic))
+	}
+	return nil
+}
+
+// ntCode extracts an NTSTATUS value for diagnostics, or zero for any other error type.
+func ntCode(err error) uint32 {
+	var status windows.NTStatus
+	if errors.As(err, &status) {
+		return uint32(status)
+	}
+	return 0
 }
 
 // AtomicWrite flushes a same-directory exclusive stage and publishes it by handle.
