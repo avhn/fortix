@@ -76,9 +76,14 @@ Most macOS users want the app. Install it with the cask; note the `--cask`
 flag:
 
 ```sh
-# Fortix.app in /Applications (arm64 macOS 13 or later); it installs its own helper
+# Fortix.app in /Applications (arm64 macOS 13 or later)
 brew install --cask avhn/tap/fortix
 ```
+
+The cask installs only the app. Open `/Applications/Fortix.app`, then go to
+**Settings and installation** and choose **Install helper...**; the app cannot
+connect until the helper is installed. One administrator prompt sets it up, and
+later connections need no prompt.
 
 Without `--cask`, `brew install avhn/tap/fortix` installs the formula instead:
 the `fortix` CLI and `fortix-helper` only, with no app in `/Applications`. Use
@@ -99,9 +104,10 @@ only:
 xattr -dr com.apple.quarantine /Applications/Fortix.app
 ```
 
-Do not disable Gatekeeper globally. Then follow the [macOS app](#macos-app)
-steps from step 4. The formula's `fortix-helper install` copies the binaries
-into root-owned locations and does not run them from the Homebrew prefix.
+Do not disable Gatekeeper globally. Then install the helper from the app as
+described above ([macOS app](#macos-app), step 4). The formula's
+`fortix-helper install` copies the binaries into root-owned locations and does
+not run them from the Homebrew prefix.
 
 `brew upgrade` updates the app or CLI, but not the root-owned helper copies.
 Afterwards run the `install` command again, or choose **Install helper...** in

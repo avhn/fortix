@@ -78,8 +78,9 @@ EOF
 <p>Source, documentation and releases: <a href="https://github.com/avhn/fortix">github.com/avhn/fortix</a></p>
 <h2>Homebrew</h2>
 <p>Most macOS users want the app; note the <code>--cask</code> flag. Without it, Homebrew installs only the CLI and helper, with no app in <code>/Applications</code>.</p>
-<pre><code># Fortix.app in /Applications (arm64 macOS 13 or later); it installs its own helper
+<pre><code># Fortix.app in /Applications (arm64 macOS 13 or later)
 brew install --cask avhn/tap/fortix
+# Then open Fortix.app: Settings and installation &gt; Install helper...
 
 # CLI and helper only (Intel Macs, Linux, or command line only)
 brew install avhn/tap/fortix
