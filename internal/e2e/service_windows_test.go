@@ -53,7 +53,7 @@ func snapshot(ctx context.Context) (networkSnapshot, error) {
 $adapters = @(Get-NetAdapter -IncludeHidden | Where-Object { $_.Name -like 'fortix-*' } | ForEach-Object { @{index=[uint32]$_.ifIndex; description=$_.InterfaceDescription} })
 $addresses = @(Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -eq '198.51.100.10' } | ForEach-Object { [uint32]$_.InterfaceIndex })
 $routes = @(Get-NetRoute -AddressFamily IPv4 | Where-Object { $_.DestinationPrefix -eq '203.0.113.0/24' } | ForEach-Object { [uint32]$_.InterfaceIndex })
-$rules = @(Get-DnsClientNrptRule | Where-Object { @($_.Namespace) -contains '.example.test' } | ForEach-Object { @{comment=$_.Comment; servers=@($_.NameServers)} })
+$rules = @(Get-DnsClientNrptRule | Where-Object { @($_.Namespace) -contains '.example.test' } | ForEach-Object { @{comment=$_.Comment; servers=@($_.NameServers | ForEach-Object { [string]$_ })} })
 @{adapters=$adapters; addresses=$addresses; routes=$routes; rules=$rules} | ConvertTo-Json -Depth 6 -Compress`
 	var state networkSnapshot
 	output, err := powershell(ctx, script)

@@ -201,8 +201,7 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: windows-helper-logs
-          path: |
-            ${{ env.FORTIX_STAGE }}/helper-logs
-            C:/ProgramData/Fortix/logs
+          # One root only: the logs were copied into the stage before the purge.
+          path: ${{ env.FORTIX_STAGE }}/helper-logs
           if-no-files-found: warn
           retention-days: 7
