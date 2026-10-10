@@ -85,6 +85,7 @@ brew install --cask avhn/tap/fortix
 # CLI and helper only (Intel Macs, Linux, or command line only)
 brew install avhn/tap/fortix
 sudo "$(brew --prefix)/bin/fortix-helper" install</code></pre>
+<p>fortix is free, open source software and is not signed with a paid Apple Developer ID certificate or notarized by Apple, so macOS blocks the app's first launch. After deciding to trust the release, open the app once, then go to <strong>System Settings &gt; Privacy &amp; Security</strong> and click <strong>Open Anyway</strong>.</p>
 <h2>Debian and Ubuntu</h2>
 <p>Packages for amd64 and arm64 come from the signed <a href="apt/">apt repository</a>.</p>
 EOF
@@ -93,7 +94,7 @@ EOF
 <h2>Windows (preview)</h2>
 <p>Download <code>fortix_&lt;version&gt;_windows_amd64.zip</code> and <code>checksums.txt</code> from the <a href="https://github.com/avhn/fortix/releases/latest">latest release</a>, verify the ZIP with <code>Get-FileHash</code>, and extract it. Then, in an elevated PowerShell inside the extracted folder:</p>
 <pre><code>.\fortix-helper.exe install --user $env:USERNAME</code></pre>
-<p>Sign out and back in for the <code>fortix</code> group membership, then start <code>FortixApp.exe</code> or use <code>fortix.exe</code>. The executables are unsigned, so SmartScreen warns on first launch. Windows supports native password-only profiles; <a href="https://github.com/avhn/fortix/blob/main/docs/windows.md">the Windows guide</a> covers verification, security, DNS, and recovery.</p>
+<p>Sign out and back in for the <code>fortix</code> group membership, then start <code>FortixApp.exe</code> or use <code>fortix.exe</code>. As an open source project without a paid code-signing certificate, the executables are unsigned, so SmartScreen warns on first launch; choose <strong>More info &gt; Run anyway</strong> after verifying the checksum. Windows supports native password-only profiles; <a href="https://github.com/avhn/fortix/blob/main/docs/windows.md">the Windows guide</a> covers verification, security, DNS, and recovery.</p>
 </main>
 </body>
 </html>

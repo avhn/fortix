@@ -95,10 +95,14 @@ brew install avhn/tap/fortix
 sudo "$(brew --prefix)/bin/fortix-helper" install
 ```
 
-The app is ad hoc signed and not notarized, so Gatekeeper blocks the first
-launch. After deciding to trust this release, either use **System Settings >
-Privacy & Security > Open Anyway**, or clear the quarantine flag for this app
-only:
+fortix is free, open source software and is not signed with a paid Apple
+Developer ID certificate or notarized by Apple. The app is ad hoc signed
+instead, so macOS blocks the first launch with a warning that it cannot verify
+the developer. This is expected; the source and the release checksums are
+public, so you can review and verify what you run. After deciding to trust this
+release, open the app once, then go to **System Settings > Privacy & Security**
+and click **Open Anyway** next to the Fortix message. Alternatively, clear the
+quarantine flag for this app only:
 
 ```sh
 xattr -dr com.apple.quarantine /Applications/Fortix.app
@@ -180,8 +184,9 @@ the extracted folder:
 ```
 
 Sign out and back in for the `fortix` group membership, then start
-`FortixApp.exe` or use `fortix.exe`. The executables are unsigned, so
-SmartScreen warns on first launch. Windows supports only native password-only
+`FortixApp.exe` or use `fortix.exe`. As an open source project without a paid
+code-signing certificate, the executables are unsigned, so SmartScreen warns on
+first launch; choose **More info > Run anyway** after verifying the checksum. Windows supports only native password-only
 profiles; openfortivpn, MFA profiles, and FortiClient import are unavailable.
 Uninstall with `fortix-helper.exe uninstall` (add `--purge` to remove profiles).
 [Windows](docs/windows.md) covers verification, security, DNS, and recovery.
