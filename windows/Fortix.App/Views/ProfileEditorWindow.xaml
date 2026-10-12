@@ -5,7 +5,7 @@
         Title="{Binding Editor.Title}" Width="680" Height="720" MinWidth="520" MinHeight="480"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
   <Window.Resources>
-    <Style TargetType="Label">
+    <Style TargetType="Label" BasedOn="{StaticResource {x:Type Label}}">
       <Setter Property="Padding" Value="0,6,0,2" />
     </Style>
     <Style TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
