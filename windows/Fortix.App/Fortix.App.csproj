@@ -19,7 +19,8 @@
     <SelfContained>true</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-    <InvariantGlobalization>true</InvariantGlobalization>
+    <!-- WPF data binding resolves the element language (en-US) to a culture; invariant mode makes that throw. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
     <!-- ReadyToRun needs a Windows crossgen host; releases are published from non-Windows runners too. -->
     <PublishReadyToRun>false</PublishReadyToRun>
     <!-- The release folder carries FortixApp.exe alone: symbols and XML docs stay in the build output. -->

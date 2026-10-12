@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Threading;
 using Fortix.App.Model;
 using Fortix.App.Native;
 using Fortix.App.Tray;
@@ -62,6 +63,7 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        DispatcherUnhandledException += OnUnhandledException;
         instance = new Mutex(initiallyOwned: true, InstanceName, out var first);
         if (!first)
         {
@@ -110,6 +112,20 @@ public partial class App : Application
         }
         instance?.Dispose();
         base.OnExit(e);
+    }
+
+    /// <summary>
+    /// Shows the reason for a fatal error before the process ends, instead of vanishing silently.
+    /// </summary>
+    /// <remarks>
+    /// The exception stays unhandled, so the process still terminates and Windows records it in
+    /// the Application event log.
+    /// </remarks>
+    /// <param name="sender">The dispatcher.</param>
+    /// <param name="e">The unhandled exception.</param>
+    private static void OnUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        MessageBox.Show($"Fortix stopped because of an unexpected error:\n\n{e.Exception.Message}", "Fortix error", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     /// <summary>
