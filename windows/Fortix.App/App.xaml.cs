@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Reflection;
 using System.Windows;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Fortix.App.Model;
 using Fortix.App.Native;
@@ -64,6 +66,9 @@ public partial class App : Application
     {
         base.OnStartup(e);
         DispatcherUnhandledException += OnUnhandledException;
+        // Hardware rendering leaves scrolled content and some text boxes blank with the Fluent
+        // theme on some GPUs; these small forms do not need it.
+        RenderOptions.ProcessRenderMode = RenderMode.SoftwareOnly;
         instance = new Mutex(initiallyOwned: true, InstanceName, out var first);
         if (!first)
         {
