@@ -1,7 +1,7 @@
-# Windows preview
+# Windows
 
 Fortix supports Windows 10 22H2 and Windows 11 on x64. Windows arm64 is
-compile-checked only, not a supported release target. This preview uses the
+compile-checked only, not a supported release target. Windows uses the
 native password-only FortiGate SSL VPN backend.
 
 ## Download and verify
@@ -26,7 +26,7 @@ The ZIP contains `fortix.exe`, `fortix-helper.exe`, `FortixApp.exe`, `wintun.dll
 a separate .NET runtime installation is not required. Keep the whole extracted
 folder together, including the pinned Wintun DLL.
 
-The Fortix executables are unsigned in this preview. SmartScreen can show
+The Fortix executables are unsigned. SmartScreen can show
 **Windows protected your PC** or an unknown-publisher warning. A matching hash
 checks the download against the manifest, not the publisher's identity: the
 manifest is not independently signed. Only after reviewing the release source,
@@ -206,12 +206,12 @@ as potentially sensitive and review them before sharing.
   another product's routes or DNS rules blindly.
 - **Recovery or uninstall refused:** keep the ownership records and diagnostics.
   Reboot if staged cleanup was deferred, then retry the supported command.
-- **MFA refused:** this is a preview limitation, not a missing password or service
-  permission. Windows native connections are password-only.
+- **MFA refused:** Windows supports only the native password-only backend, so
+  this is not a missing password or service permission.
 
 ## winget status
 
 Release packaging can generate winget manifests for the ZIP's portable CLI,
-helper aliases, and desktop executable. Submission is pending; this preview is
-not claimed to be available from the public winget catalog. Use the verified ZIP
-installation above until submission and a human Windows validation are complete.
+helper aliases, and desktop executable. Submission is pending; it is not claimed
+to be available from the public winget catalog. Use the verified ZIP installation
+above until submission and a human Windows validation are complete.

@@ -6,7 +6,7 @@
 flowchart LR
     Tag[Version tag] --> Go[Go checks and package builds]
     Tag --> Mac[Swift checks and arm64 app build]
-    Tag --> Windows[Windows x64 preview build]
+    Tag --> Windows[Windows x64 build]
     Go --> Assets[Complete artifact set]
     Mac --> Assets
     Windows --> Assets
@@ -37,7 +37,7 @@ fails. Channel updates are serialized independently to avoid concurrent pushes.
 | `fortix_*_linux_*.deb` | amd64/arm64: systemd package, CLI/helper/tray, license and notices |
 | `fortix_*_darwin_arm64.dmg` | macOS 13+ arm64 app with an Applications link |
 | `fortix_*_darwin_arm64.app.zip` | Same arm64 Fortix.app bundle in a zip |
-| `fortix_*_windows_amd64.zip` | Windows 10 22H2/11 x64 preview: CLI, helper, self-contained desktop app, Wintun DLL, README, license and notices |
+| `fortix_*_windows_amd64.zip` | Windows 10 22H2/11 x64: CLI, helper, self-contained desktop app, Wintun DLL, README, license and notices |
 | `checksums.txt` | All nine downloadable assets above |
 
 The app bundles the CLI, helper, and pinentry under `Contents/Resources/libexec`,
@@ -64,7 +64,7 @@ The optional signing hook runs `scripts/sign-windows.sh` only when
 `WINDOWS_SIGNING_CERT` is present. The placeholder prints an explicit signing
 skip notice even when configured; it does not decode certificates or sign files.
 Certificate provisioning and signing implementation remain future work, so the
-preview binaries remain unsigned. See [Windows preview](windows.md) for
+Windows binaries remain unsigned. See [Windows](windows.md) for
 SmartScreen, checksum verification, installation, and uninstall instructions.
 winget manifests are generated separately; public catalog submission is pending.
 
@@ -357,8 +357,8 @@ archives, Debian packages, or Swift bundles.
 ## Limitations
 
 - The macOS app and DMG are arm64 only; Intel macOS has CLI archives.
-- No Developer ID signing, notarization, or automatic updates. Windows x64 is an
-  unsigned preview; Windows arm64 is compile-checked only.
+- No Developer ID signing, notarization, or automatic updates. Windows x64
+  binaries are unsigned; Windows arm64 is compile-checked only.
 - No openfortivpn bundled with the app. MFA requires explicitly installed optional
   support and a compatible gateway; native never handles second factors.
 - No native SAML/SSO, client-certificate authentication, DTLS, PAP/CHAP,

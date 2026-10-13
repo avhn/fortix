@@ -66,7 +66,7 @@ EOF
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>fortix</title>
-<meta name="description" content="FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows (preview).">
+<meta name="description" content="FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows.">
 EOF
     style
     cat <<'EOF'
@@ -74,7 +74,7 @@ EOF
 <body>
 <main>
 <h1>fortix</h1>
-<p class="lead">FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows (preview). The CLI, macOS menu-bar app, Linux tray, and Windows desktop app share a privileged helper.</p>
+<p class="lead">FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows. The CLI, macOS menu-bar app, Linux tray, and Windows desktop app share a privileged helper.</p>
 <p>Source, documentation and releases: <a href="https://github.com/avhn/fortix">github.com/avhn/fortix</a></p>
 <h2>Security: your password stays with your OS</h2>
 <p>fortix never stores your VPN password itself: not in the app, not in profile files, and not on disk. Saving is optional, happens only after a successful connection, and uses your operating system's own credential store under your user account:</p>
@@ -99,7 +99,7 @@ sudo "$(brew --prefix)/bin/fortix-helper" install</code></pre>
 EOF
     install_steps
     cat <<'EOF'
-<h2>Windows (preview)</h2>
+<h2>Windows</h2>
 <p>Download <code>fortix_&lt;version&gt;_windows_amd64.zip</code> and <code>checksums.txt</code> from the <a href="https://github.com/avhn/fortix/releases/latest">latest release</a>, verify the ZIP with <code>Get-FileHash</code>, and extract it. Then, in an elevated PowerShell inside the extracted folder:</p>
 <pre><code>.\fortix-helper.exe install --user $env:USERNAME</code></pre>
 <p>Sign out and back in for the <code>fortix</code> group membership, then start <code>FortixApp.exe</code> or use <code>fortix.exe</code>. As an open source project without a paid code-signing certificate, the executables are unsigned, so SmartScreen warns on first launch; choose <strong>More info &gt; Run anyway</strong> after verifying the checksum. Windows supports native password-only profiles; <a href="https://github.com/avhn/fortix/blob/main/docs/windows.md">the Windows guide</a> covers verification, security, DNS, and recovery.</p>

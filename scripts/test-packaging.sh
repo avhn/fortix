@@ -294,7 +294,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     assert b'Wintun 0.14.1' in notices and b'https://www.wintun.net/builds/wintun-0.14.1.zip' in notices
     assert b'.NET runtime (MIT)' in notices and b'https://github.com/dotnet/runtime/blob/main/LICENSE.TXT' in notices
     readme = archive.read(prefix + 'README.txt')
-    for text in [b'preview', b'unsigned', b'SmartScreen', b'fortix-helper.exe install --user <name>', b'fortix-helper.exe uninstall', b'docs/windows.md']:
+    for text in [b'Windows (x64)', b'unsigned', b'SmartScreen', b'native password-only backend', b'arm64 is', b'compile-checked only, not a supported target', b'fortix-helper.exe install --user <name>', b'fortix-helper.exe uninstall', b'docs/windows.md']:
         assert text in readme
 PY
     SIGNING_OUTPUT="$(env -u WINDOWS_SIGNING_CERT "${REPO_ROOT}/scripts/sign-windows.sh")"

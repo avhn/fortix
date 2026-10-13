@@ -163,7 +163,7 @@ jobs:
         env:
           WINDOWS_SIGNING_CERT: ${{ secrets.WINDOWS_SIGNING_CERT }}
         run: scripts/sign-windows.sh "$(cygpath -u "$FORTIX_STAGE")"
-      - name: Package deterministic Windows preview ZIP
+      - name: Package deterministic Windows ZIP
         run: |
           STAGE="$(cygpath -u "$FORTIX_STAGE")"
           scripts/package-windows.sh "$RELEASE_TAG" dist "$STAGE/fortix.exe" "$STAGE/fortix-helper.exe" "$STAGE/app/FortixApp.exe" "$STAGE/wintun.dll"

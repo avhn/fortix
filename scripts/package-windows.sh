@@ -94,8 +94,10 @@ cp "${REPO_ROOT}/LICENSE" "${STAGING}/LICENSE"
 ) >"${STAGING}/NOTICES.txt"
 rm "${STAGING}/windows-modules"
 cat >"${STAGING}/README.txt" <<'EOF'
-Fortix for Windows (x64) - preview
-Windows 10 22H2 or Windows 11. This preview is unsigned; SmartScreen may warn.
+Fortix for Windows (x64)
+Windows 10 22H2 or Windows 11 x64. The executables are unsigned; SmartScreen
+may warn. Only the native password-only backend is supported. Windows arm64 is
+compile-checked only, not a supported target.
 Only run files obtained from the official release and verify checksums first.
 
 Extract the entire folder. In an administrator terminal, from this folder:
