@@ -53,6 +53,8 @@ final class AppModel: ObservableObject {
   @Published private(set) var prompts: [PendingPrompt] = []
   /// Logs retain at most five hundred already-redacted helper records.
   @Published private(set) var logs: [String] = []
+  /// RequestedTab asks the management window to switch tabs, and is cleared once applied.
+  @Published var requestedTab: String?
   /// ImportDrafts are read-only preview results until individually approved.
   @Published var importDrafts: [VPNProfile] = []
   /// Client provides correlated requests, subscriptions, and bounded shutdown waits.

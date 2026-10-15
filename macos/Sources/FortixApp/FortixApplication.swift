@@ -16,7 +16,10 @@ struct FortixApplication: App {
   var body: some Scene {
     Settings { EmptyView() }
       .commands {
-        CommandGroup(replacing: .appSettings) {}
+        CommandGroup(replacing: .appSettings) {
+          Button("Settings...") { delegate.showSettings() }
+            .keyboardShortcut(",")
+        }
         CommandGroup(replacing: .appInfo) {
           Button("About Fortix") { showAboutPanel() }
         }
@@ -60,6 +63,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
       guard (try? await center.requestAuthorization(options: [.alert])) == true else { return }
       try? await center.add(request)
     }
+  }
+
+  /// ShowSettings answers Command-comma with the management window's settings tab, since the
+  /// placeholder Settings scene would otherwise open an empty window.
+  func showSettings() {
+    model.requestedTab = "settings"
+    status?.showWindow()
   }
 
   /// DisconnectAllAndQuit stops every tunnel before terminating, when the helper is reachable.

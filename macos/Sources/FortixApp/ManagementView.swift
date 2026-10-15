@@ -54,6 +54,11 @@ struct ManagementView: View {
     .padding()
     .frame(minWidth: AppTheme.windowWidth, minHeight: AppTheme.windowHeight)
     .onAppear { if !model.reachable { tab = "settings" } }
+    .onReceive(model.$requestedTab) { requested in
+      guard let requested else { return }
+      tab = requested
+      model.requestedTab = nil
+    }
     .onReceive(model.$prompts) { prompts in
       if !prompts.isEmpty {
         pendingImports.removeAll()
