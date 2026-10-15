@@ -13,8 +13,10 @@ struct FortixApplication: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
   /// Body leaves tunnels running on ordinary quit and exposes clean disconnect as a separate action.
+  /// Its only scene is a menu bar extra that is never inserted, because a placeholder Settings
+  /// scene is opened as an empty window whenever the app is launched or reopened.
   var body: some Scene {
-    Settings { EmptyView() }
+    MenuBarExtra("Fortix", isInserted: .constant(false)) { EmptyView() }
       .commands {
         CommandGroup(replacing: .appSettings) {
           Button("Settings...") { delegate.showSettings() }
@@ -40,13 +42,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   /// Status owns the menu bar item for the whole application lifetime.
   private var status: StatusController?
 
-  /// ApplicationDidFinishLaunching connects to the helper and shows setup on first launch.
+  /// ApplicationDidFinishLaunching connects to the helper and opens the management window on
+  /// every launch, on the settings tab the first time and on the profiles tab afterwards.
   func applicationDidFinishLaunching(_ notification: Notification) {
     let controller = StatusController(model: model)
     status = controller
     model.onFailure = { [weak self] id, detail in self?.notifyFailure(id, detail: detail) }
     model.start()
-    if !UserDefaults.standard.bool(forKey: "setupCompleted") { controller.showWindow() }
+    let defaults = UserDefaults.standard
+    model.requestedTab = Self.launchTab(
+      hasLaunched: defaults.object(forKey: "hasLaunched") as? Bool,
+      setupCompleted: defaults.bool(forKey: "setupCompleted"))
+    controller.showWindow()
+    defaults.set(true, forKey: "hasLaunched")
+  }
+
+  /// LaunchTab picks the tab shown at launch. Installations from before launch history was
+  /// recorded count as launched once their helper setup completed.
+  nonisolated static func launchTab(hasLaunched: Bool?, setupCompleted: Bool) -> String {
+    (hasLaunched ?? setupCompleted) ? "profiles" : "settings"
+  }
+
+  /// ApplicationShouldHandleReopen brings the management window back, keeping its current tab,
+  /// when the app is opened again while it is already running.
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    status?.showWindow()
+    return false
   }
 
   /// NotifyFailure posts one macOS notification for a failed connection attempt with the

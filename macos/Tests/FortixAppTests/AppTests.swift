@@ -19,6 +19,16 @@ final class AppTests: XCTestCase {
     XCTAssertTrue(RingRenderer.image(status: .connected, frame: 0).isTemplate)
   }
 
+  /// TestLaunchTab opens settings on the first launch and profiles afterwards, treating an
+  /// installation completed before launch history existed as already launched.
+  func testLaunchTab() {
+    XCTAssertEqual(AppDelegate.launchTab(hasLaunched: nil, setupCompleted: false), "settings")
+    XCTAssertEqual(AppDelegate.launchTab(hasLaunched: nil, setupCompleted: true), "profiles")
+    XCTAssertEqual(AppDelegate.launchTab(hasLaunched: false, setupCompleted: true), "settings")
+    XCTAssertEqual(AppDelegate.launchTab(hasLaunched: true, setupCompleted: false), "profiles")
+    XCTAssertEqual(AppDelegate.launchTab(hasLaunched: true, setupCompleted: true), "profiles")
+  }
+
   /// TestAnimation verifies twelve one-second frames and a static reduced-motion substitution.
   func testAnimation() {
     for frame in 0..<12 {

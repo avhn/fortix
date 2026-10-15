@@ -53,7 +53,6 @@ struct ManagementView: View {
     }
     .padding()
     .frame(minWidth: AppTheme.windowWidth, minHeight: AppTheme.windowHeight)
-    .onAppear { if !model.reachable { tab = "settings" } }
     .onReceive(model.$requestedTab) { requested in
       guard let requested else { return }
       tab = requested
