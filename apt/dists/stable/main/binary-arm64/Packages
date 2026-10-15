@@ -100,3 +100,20 @@ SHA512: 3e819b18d1bd8a27373a514d69d1bc5740735d120f0835ca9fbf11b57d32e0cedfb9bd84
 Homepage: https://github.com/avhn/fortix
 Description: FortiGate SSL VPN profile manager with a CLI and desktop tray.
 
+Package: fortix
+Architecture: arm64
+Version: 1.0.2
+Priority: optional
+Maintainer: Mert Dede <doganmertdede@gmail.com>
+Installed-Size: 16825
+Depends: iproute2
+Recommends: openfortivpn, ppp
+Filename: pool/main/fortix_1.0.2_linux_arm64.deb
+Size: 6904524
+MD5sum: f50c3ffc8b221f0f42a7ffe688c99a28
+SHA1: b2cf5c7e166c1f90f39596c34afe1d30667177ae
+SHA256: cbfbe02b90c4e2f966ca9c12794837a08160b34e17cf5764aea4d1861d2feb7a
+SHA512: 862b80266d2876fe848bbf1db4e72b203075e83b79986d4fe8b239a969fa02d3dced3dc49194bf478b7288ff71f84ac026816cf80ae477e12ec74ef85e0a3719
+Homepage: https://github.com/avhn/fortix
+Description: FortiGate SSL VPN profile manager with a CLI and desktop tray.
+
