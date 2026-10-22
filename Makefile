@@ -1,5 +1,5 @@
 GOLANGCI_LINT := github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0
-GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.1.4
+GOVULNCHECK := golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
 .PHONY: build test fuzz lint vuln fmt-check check cross-build native-tray packaging-test notices-check macos-app macos-dmg
 
