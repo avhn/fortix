@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Prove Unix sources and release inputs match a detached baseline checkout.
 # Usage: check-unix-unchanged.sh
-# FORTIX_UNIX_BASE overrides 7c171f5; staged, unstaged and untracked files are checked as-is.
+# FORTIX_UNIX_BASE overrides 5c818f5; staged, unstaged and untracked files are checked as-is.
 set -euo pipefail
 
 # die reports an invalid baseline or a failed prerequisite without changing the worktree.
@@ -14,7 +14,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 [[ $# -eq 0 ]] || die "usage: check-unix-unchanged.sh"
 command -v git >/dev/null || die "git is required"
 command -v go >/dev/null || die "go is required"
-BASE_REF="${FORTIX_UNIX_BASE:-7c171f5}"
+BASE_REF="${FORTIX_UNIX_BASE:-5c818f5}"
 BASE_COMMIT="$(git -C "${REPO_ROOT}" rev-parse --verify "${BASE_REF}^{commit}")" || die "invalid Unix baseline: ${BASE_REF}"
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/fortix-unixproof.XXXXXX")"
 
