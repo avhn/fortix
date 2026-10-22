@@ -310,7 +310,7 @@ infer those outcomes from fixture-only checks.
 ## Unix release payload proof
 
 Run `bash scripts/check-release-unchanged.sh` before accepting Unix release
-payload equivalence. It compares a temporary detached `8e48fc1` checkout with
+payload equivalence. It compares a temporary detached `7c171f5` checkout with
 the current working tree, including uncommitted changes. `FORTIX_UNIX_BASE`
 overrides the baseline. No GoReleaser installation is required or attempted.
 The script requires `timeout` (or `gtimeout` on macOS) to bound each Go build.

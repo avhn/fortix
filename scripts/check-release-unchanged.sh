@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Compare Unix release payloads and packaging inputs against a detached baseline.
 # Usage: check-release-unchanged.sh
-# FORTIX_UNIX_BASE overrides 8e48fc1; the current working tree is checked as-is.
+# FORTIX_UNIX_BASE overrides 7c171f5; the current working tree is checked as-is.
 set -euo pipefail
 
 # die reports an invalid prerequisite before any release build is attempted.
@@ -15,7 +15,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 for TOOL in git go tar shasum cmp python3; do
     command -v "${TOOL}" >/dev/null || die "${TOOL} is required"
 done
-BASE_REF="${FORTIX_UNIX_BASE:-8e48fc1}"
+BASE_REF="${FORTIX_UNIX_BASE:-7c171f5}"
 BASE_COMMIT="$(git -C "${REPO_ROOT}" rev-parse --verify "${BASE_REF}^{commit}")" || die "invalid Unix baseline: ${BASE_REF}"
 TIMEOUT="$(command -v timeout || command -v gtimeout)" || die "timeout or gtimeout is required to bound Go builds"
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/fortix-releaseproof.XXXXXX")"
