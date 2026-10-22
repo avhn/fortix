@@ -37,10 +37,6 @@ jobs:
           make check
           make cross-build
       - name: Install GoReleaser
-        # GoReleaser needs a newer Go than the module. Only this step uses it: setup-go
-        # pins later steps to the go.mod toolchain, which builds the released binaries.
-        env:
-          GOTOOLCHAIN: go1.27.1
         run: go install github.com/goreleaser/goreleaser/v2@v2.18.2
       - name: Validate release configuration
         run: '"$(go env GOPATH)/bin/goreleaser" check'

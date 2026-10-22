@@ -2,7 +2,7 @@ module github.com/avhn/fortix
 
 go 1.26.0
 
-toolchain go1.26.10
+toolchain go1.27.3
 
 require (
 	fyne.io/systray v1.12.2

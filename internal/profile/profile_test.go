@@ -322,8 +322,9 @@ func TestDecode(t *testing.T) {
 		{"bool", `true`, "top level"},
 		{"empty", ``, "decode profile"},
 		{"truncated", `{"id":`, "EOF"},
-		{"unclosed array", `{"routes":{"include":[`, "EOF"},
-		{"unclosed object", `{"gateway":{"host":"vpn.example.com"`, "EOF"},
+		// Go 1.27 reports nested truncation as a syntax error rather than EOF; match the path.
+		{"unclosed array", `{"routes":{"include":[`, "$.routes.include"},
+		{"unclosed object", `{"gateway":{"host":"vpn.example.com"`, "$.gateway"},
 		{"wrong type", strings.Replace(data, `"port": 10443`, `"port":"10443"`, 1), "cannot unmarshal"},
 		{"null bool", strings.Replace(data, `"preserve_lan": true`, `"preserve_lan":null`, 1), "null is not allowed"},
 		{"null MFA parameter", strings.Replace(data, `"mode": "none"`, `"mode":"none","digits":null`, 1), "null is not allowed"},
