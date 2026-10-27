@@ -1,10 +1,21 @@
 <h1 align="center"><img src="docs/assets/logo.png" width="128" height="128" alt="Fortix app icon: a white arch opening onto a lit tunnel"><br>fortix</h1>
 
-FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows. The CLI,
-macOS menu-bar app, Linux tray, and Windows desktop app share a privileged helper
-with two selectable backends: a native password-only client and, on macOS and
-Linux, optional [openfortivpn](https://github.com/adrienverge/openfortivpn) for
-push or code-based second factors.
+<p align="center">
+  FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows.
+</p>
+
+<p align="center">
+  <a href="https://github.com/avhn/fortix/releases"><img alt="Release" src="https://img.shields.io/github/v/release/avhn/fortix"></a>
+  <a href="https://github.com/avhn/fortix/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/avhn/fortix/ci.yml?branch=main&label=ci"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/avhn/fortix"></a>
+  <a href="#installation"><img alt="Platforms: macOS, Linux, Windows" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-000000"></a>
+</p>
+
+The CLI, macOS menu-bar app, Linux tray, and Windows desktop app share a
+privileged helper with two selectable backends: a native password-only client
+and, on macOS and Linux, optional
+[openfortivpn](https://github.com/adrienverge/openfortivpn) for push or
+code-based second factors.
 
 ```mermaid
 flowchart LR
