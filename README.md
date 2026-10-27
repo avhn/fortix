@@ -1,7 +1,8 @@
 <h1 align="center"><img src="docs/assets/logo.png" width="128" height="128" alt="Fortix app icon: a white arch opening onto a lit tunnel"><br>fortix</h1>
 
 <p align="center">
-  FortiGate SSL VPN for macOS, Debian/Ubuntu, and Windows. Split tunneling, split DNS, multiple connections at once.
+  Independent FortiGate SSL VPN client for macOS, Debian/Ubuntu, and Windows.<br>
+  Split tunneling, split DNS, multiple connections at once.
 </p>
 
 <p align="center">
@@ -29,8 +30,13 @@ flowchart LR
 
 ## Features and status
 
-- Named profiles, individual toggles, and several simultaneous tunnels when
-  addresses and routes do not conflict.
+- **Split tunneling:** only the IPv4 networks the gateway pushes or a profile
+  lists go through the VPN, with exclusions; on the native backend a pushed
+  route that overlaps your Wi-Fi or Ethernet network is narrowed around it.
+- **Split DNS:** only the domains a profile lists resolve through the VPN;
+  every other lookup stays on your normal DNS.
+- **Multiple connections at once:** named profiles with individual toggles, and
+  several tunnels up together when their addresses and routes do not conflict.
 - Passwords stay with your operating system, not with fortix: saving is
   optional and goes only to the macOS Keychain, the Linux desktop keyring, or
   Windows Credential Manager, never to fortix files or disk. Without a saved
@@ -38,7 +44,7 @@ flowchart LR
   [where your password is stored](#where-your-password-is-stored).
 - Native password-only tunnels without openfortivpn or pppd; optional FortiToken
   push and prompted codes through the openfortivpn backend.
-- Custom IPv4 routes and split DNS, owned-resource cleanup, and helper recovery.
+- Owned-resource cleanup and helper recovery.
 - Shareable profile files without usernames or passwords, with partial import,
   merge, and editable route and DNS lists in the app.
 - Explicit certificate confirmation showing SHA-256, subject, and issuer.
