@@ -1,11 +1,4 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-header-dark.png">
-    <img src="docs/assets/readme-header.png" alt="Fortix app icon: a white arch opening onto a lit tunnel" width="640">
-  </picture>
-</p>
-
-# fortix
+<h1 align="center"><img src="docs/assets/logo.png" width="128" height="128" alt="Fortix app icon: a white arch opening onto a lit tunnel"><br>fortix</h1>
 
 FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows. The CLI,
 macOS menu-bar app, Linux tray, and Windows desktop app share a privileged helper

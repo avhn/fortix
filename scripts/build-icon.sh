@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regenerate the macOS app icon and README header images from assets/icon/art.py.
+# Regenerate the macOS app icon and README logo from assets/icon/art.py.
 # Usage: build-icon.sh
 # Requires macOS with Xcode 26 or later (actool compiles the layered .icon format),
 # python3, rsvg-convert and ImageMagick. Outputs are committed, so release builds on
@@ -90,16 +90,12 @@ for POINTS in 16 32 128 256 512; do
 done
 iconutil -c icns "${ICONSET}" -o "${WORK}/AppIcon.icns"
 
-# README headers: 1280x640 with the icon centred, one per color scheme.
-for THEME in light dark; do
-    rsvg-convert -w 320 -h 320 "${WORK}/icon-${THEME}.svg" -o "${WORK}/header-icon-${THEME}.png"
-done
-magick -size 1280x640 radial-gradient:'#FBFAF8'-'#E9E6E1' \
-    "${WORK}/header-icon-light.png" -gravity center -composite -strip "${WORK}/readme-header.png"
-magick -size 1280x640 radial-gradient:'#24262D'-'#0E0F12' \
-    "${WORK}/header-icon-dark.png" -gravity center -composite -strip "${WORK}/readme-header-dark.png"
+# README logo: the masked icon alone on transparency, at 2x for its 128 px display. Both
+# appearances render the same graphite artwork, so one image serves light and dark.
+rsvg-convert -w 256 -h 256 "${WORK}/icon-light.svg" -o "${WORK}/logo-raw.png"
+magick "${WORK}/logo-raw.png" -strip "${WORK}/logo.png"
 
 install -m 0644 "${WORK}/compiled/Assets.car" "${REPO_ROOT}/packaging/macos/Assets.car"
 install -m 0644 "${WORK}/AppIcon.icns" "${REPO_ROOT}/packaging/macos/AppIcon.icns"
-install -m 0644 "${WORK}/readme-header.png" "${WORK}/readme-header-dark.png" "${REPO_ROOT}/docs/assets/"
+install -m 0644 "${WORK}/logo.png" "${REPO_ROOT}/docs/assets/logo.png"
 printf 'icon outputs written to packaging/macos and docs/assets\n'

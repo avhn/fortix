@@ -32,7 +32,7 @@ var MOVE_DONORS = map[string]bool{"internal/network/native.go": true, "internal/
 // the Unix archives as documentation only.
 var ALLOWED_CHANGED = map[string]bool{"packaging/macos/AppIcon.icns": true, "packaging/macos/Assets.car": true, "README.md": true}
 var ALLOWED_PATHS = []string{
-	"docs/windows.md", "docs/release.md", "assets/icon/art.py", "docs/assets/readme-header.png",
+	"docs/windows.md", "docs/release.md", "assets/icon/art.py", "docs/assets/logo.png",
 	"packaging/macos/AppIcon.icns", "packaging/macos/Assets.car", "scripts/check-unix-unchanged.sh",
 	"scripts/render-winget.sh", "scripts/package-windows.sh", "scripts/sign-windows.sh",
 	"scripts/verify-release-assets.sh", "scripts/release-checksums.sh",
