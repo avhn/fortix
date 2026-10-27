@@ -1,8 +1,7 @@
 <h1 align="center"><img src="docs/assets/logo.png" width="128" height="128" alt="Fortix app icon: a white arch opening onto a lit tunnel"><br>fortix</h1>
 
 <p align="center">
-  Independent FortiGate SSL VPN client for macOS, Debian/Ubuntu, and Windows.<br>
-  Split tunneling, split DNS, multiple connections at once.
+  Independent FortiGate SSL VPN client. Split tunneling, split DNS, multiple connections at once.
 </p>
 
 <p align="center">
