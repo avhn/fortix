@@ -1,7 +1,7 @@
 <h1 align="center"><img src="docs/assets/logo.png" width="128" height="128" alt="Fortix app icon: a white arch opening onto a lit tunnel"><br>fortix</h1>
 
 <p align="center">
-  FortiGate SSL VPN profile manager for macOS, Debian/Ubuntu, and Windows.
+  FortiGate SSL VPN for macOS, Debian/Ubuntu, and Windows. Split tunneling, split DNS, multiple connections at once.
 </p>
 
 <p align="center">
